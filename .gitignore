@@ -1,0 +1,19 @@
+node_modules/
+.expo/
+.expo-check/
+dist/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# Expo / React Native local files
+.idea/
+.vscode/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
