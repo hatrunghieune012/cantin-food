@@ -9,20 +9,27 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import type { User } from '../types';
 
-export default function LoginScreen({ users, onLogin, onRegister }) {
+interface LoginScreenProps {
+  users: User[];
+  onLogin: (account: User) => void;
+  onRegister: () => void;
+}
+
+export default function LoginScreen({ users, onLogin, onRegister }: LoginScreenProps) {
   const [studentId, setStudentId] = useState('');
   const [password, setPassword] = useState('');
   const [loginMessage, setLoginMessage] = useState('');
 
   // Chỉ giữ lại chữ số và giới hạn MSSV ở 8 số.
-  function changeStudentId(value) {
-    setStudentId(value);
+  function changeStudentId(value: string) {
+    setStudentId(value.replace(/\D/g, '').slice(0, 8));
   }
 
   function handleLogin() {
     setLoginMessage('');
-    if (studentId.length !== 8) {
+    if (!/^\d{8}$/.test(studentId)) {
       setLoginMessage('Mã số sinh viên phải có đúng 8 chữ số.');
       Alert.alert('MSSV không hợp lệ', 'Mã số sinh viên phải gồm đúng 8 chữ số.');
       return;
@@ -53,14 +60,6 @@ export default function LoginScreen({ users, onLogin, onRegister }) {
       }
       return;
     }
-
-    if (false) {
-        Alert.alert(
-          'Chưa có tài khoản',
-          'Tài khoản chưa tồn tại. Vui lòng đăng ký trước.'
-        );
-        return;
-      }
 
     if (account.password !== password) {
       setLoginMessage('MSSV đã tồn tại nhưng mật khẩu chưa chính xác.');

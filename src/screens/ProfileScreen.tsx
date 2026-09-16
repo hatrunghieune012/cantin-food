@@ -1,7 +1,14 @@
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatPrice } from '../data/foods';
+import type { Order, User } from '../types';
 
-export default function ProfileScreen({ currentUser, orders, onLogout }) {
+interface ProfileScreenProps {
+  currentUser: User | null;
+  orders: Order[];
+  onLogout: () => void;
+}
+
+export default function ProfileScreen({ currentUser, orders, onLogout }: ProfileScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.profile}>

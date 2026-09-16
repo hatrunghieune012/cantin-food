@@ -1,8 +1,14 @@
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import FoodCard from '../components/FoodCard';
 import { foods } from '../data/foods';
+import type { Food, User } from '../types';
 
-export default function HomeScreen({ currentUser, onSelectFood }) {
+interface HomeScreenProps {
+  currentUser: User | null;
+  onSelectFood: (food: Food) => void;
+}
+
+export default function HomeScreen({ currentUser, onSelectFood }: HomeScreenProps) {
   const name = currentUser ? currentUser.fullName : 'Sinh viên';
   return <ScrollView contentContainerStyle={styles.container}>
     <View style={styles.header}><View><Text style={styles.small}>Thứ hai, 15 tháng 9</Text><Text style={styles.greeting}>Xin chào, {name} 👋</Text></View><Text style={styles.avatar}>SV</Text></View>

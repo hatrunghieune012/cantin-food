@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   Alert,
   Pressable,
@@ -9,8 +9,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import type { User } from '../types';
 
-export default function RegisterScreen({ users, setUsers, onBack }) {
+interface RegisterScreenProps {
+  users: User[];
+  setUsers: Dispatch<SetStateAction<User[]>>;
+  onBack: () => void;
+}
+
+export default function RegisterScreen({ users, setUsers, onBack }: RegisterScreenProps) {
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
   const [email, setEmail] = useState('');
@@ -18,8 +25,8 @@ export default function RegisterScreen({ users, setUsers, onBack }) {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   // MSSV được dùng làm tên đăng nhập nên chỉ cho nhập đúng 8 chữ số.
-  function changeStudentId(value) {
-    setStudentId(value);
+  function changeStudentId(value: string) {
+    setStudentId(value.replace(/\D/g, '').slice(0, 8));
   }
 
   function handleRegister() {
@@ -34,12 +41,13 @@ export default function RegisterScreen({ users, setUsers, onBack }) {
       return;
     }
 
-    if (studentId.length !== 8) {
+    if (!/^\d{8}$/.test(studentId)) {
       Alert.alert('MSSV không hợp lệ', 'Mã số sinh viên phải gồm đúng 8 chữ số.');
       return;
     }
 
-    if (!email.includes('@')) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       Alert.alert('Email không hợp lệ', 'Vui lòng nhập đúng định dạng email.');
       return;
     }
@@ -61,15 +69,15 @@ export default function RegisterScreen({ users, setUsers, onBack }) {
       }
 
       // Kiểm tra email sau khi đã đưa về chữ thường để tránh đăng ký trùng.
-      if (users.find((item) => item.email === email)) {
+      if (users.find((item) => item.email.toLowerCase() === normalizedEmail)) {
         Alert.alert('Email đã tồn tại', 'Email này đã được đăng ký.');
         return;
       }
 
-      const newAccount = {
-        fullName,
+      const newAccount: User = {
+        fullName: fullName.trim(),
         studentId,
-        email,
+        email: normalizedEmail,
         password,
       };
       setUsers([...users, newAccount]);
@@ -150,7 +158,12 @@ export default function RegisterScreen({ users, setUsers, onBack }) {
   );
 }
 
-function Field({ label, children }) {
+interface FieldProps {
+  label: string;
+  children: ReactNode;
+}
+
+function Field({ label, children }: FieldProps) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>

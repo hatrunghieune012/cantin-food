@@ -1,8 +1,17 @@
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { Dispatch, SetStateAction } from 'react';
 import { formatPrice } from '../data/foods';
+import type { CartItem, Order } from '../types';
 
-export default function CartScreen({ cart, setCart, setOrders, onHome }) {
-  function changeQuantity(id, amount) {
+interface CartScreenProps {
+  cart: CartItem[];
+  setCart: Dispatch<SetStateAction<CartItem[]>>;
+  setOrders: Dispatch<SetStateAction<Order[]>>;
+  onHome: () => void;
+}
+
+export default function CartScreen({ cart, setCart, setOrders, onHome }: CartScreenProps) {
+  function changeQuantity(id: number, amount: number) {
     setCart(
       cart
         .map((item) =>
@@ -14,7 +23,7 @@ export default function CartScreen({ cart, setCart, setOrders, onHome }) {
     );
   }
 
-  function removeItem(id) {
+  function removeItem(id: number) {
     setCart(cart.filter((item) => item.id !== id));
   }
 
@@ -48,7 +57,7 @@ export default function CartScreen({ cart, setCart, setOrders, onHome }) {
   }
 
   function placeOrder() {
-    const newOrder = {
+    const newOrder: Order = {
       id: Date.now(),
       items: cart.map((item) => ({
         id: item.id,
