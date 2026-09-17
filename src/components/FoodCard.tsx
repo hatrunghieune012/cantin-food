@@ -1,11 +1,50 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatPrice } from '../data/foods';
-import type { Food } from '../types';
+import { dinhDangGia } from '../data/foods';
+import type { MonAn } from '../types';
 
-interface FoodCardProps {
-  food: Food;
-  onPress: () => void;
+interface ThuocTinhTheMonAn {
+  monAn: MonAn;
+  khiNhan: () => void;
 }
 
-export default function FoodCard({ food, onPress }: FoodCardProps) { return <View style={styles.card}><Image source={food.image} resizeMode="cover" style={styles.image} /><View style={styles.info}><View style={styles.nameRow}><Text style={styles.name}>{food.name}</Text><Text style={styles.available}>●</Text></View><Text style={styles.price}>{formatPrice(food.price)}</Text><Text style={styles.description} numberOfLines={1}>{food.description}</Text><Pressable style={styles.button} onPress={onPress}><Text style={styles.buttonText}>Xem món  ›</Text></Pressable></View></View>; }
-const styles = StyleSheet.create({ card: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 16, padding: 12, marginBottom: 12, elevation: 2 }, image: { width: 92, height: 92, borderRadius: 12 }, info: { flex: 1, marginLeft: 13 }, nameRow: { flexDirection: 'row', justifyContent: 'space-between' }, name: { fontSize: 17, fontWeight: '700', color: '#25282D' }, available: { color: '#35A66B', fontSize: 15 }, price: { color: '#E86A33', fontWeight: '700', marginTop: 4 }, description: { color: '#858B94', fontSize: 12, marginTop: 4 }, button: { alignSelf: 'flex-start', backgroundColor: '#FFF0E9', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, marginTop: 8 }, buttonText: { color: '#D85624', fontWeight: '700', fontSize: 12 } });
+export default function TheMonAn({ monAn, khiNhan }: ThuocTinhTheMonAn) {
+  return (
+    <View style={styles.card}>
+      <Image source={monAn.hinhAnh} style={styles.image} />
+
+      <View style={styles.info}>
+        <Text style={styles.name}>{monAn.ten}</Text>
+        <Text style={styles.price}>{dinhDangGia(monAn.gia)}</Text>
+        <Text style={styles.description}>{monAn.moTa}</Text>
+
+        <Pressable style={styles.button} onPress={khiNhan}>
+          <Text style={styles.buttonText}>Xem món</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  image: { width: 92, height: 92, borderRadius: 12 },
+  info: { flex: 1, marginLeft: 13 },
+  name: { color: '#25282D', fontSize: 17, fontWeight: '700' },
+  price: { marginTop: 4, color: '#E86A33', fontWeight: '700' },
+  description: { marginTop: 4, color: '#858B94', fontSize: 12 },
+  button: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginTop: 8,
+    borderRadius: 8,
+    backgroundColor: '#FFF0E9',
+  },
+  buttonText: { color: '#D85624', fontSize: 12, fontWeight: '700' },
+});

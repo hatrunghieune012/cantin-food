@@ -1,14 +1,14 @@
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { formatPrice } from '../data/foods';
-import type { Order, User } from '../types';
+import { dinhDangGia } from '../data/foods';
+import type { DonHang, NguoiDung } from '../types';
 
-interface ProfileScreenProps {
-  currentUser: User | null;
-  orders: Order[];
-  onLogout: () => void;
+interface ThuocTinhCaNhan {
+  nguoiDungHienTai: NguoiDung | null;
+  donHang: DonHang[];
+  khiDangXuat: () => void;
 }
 
-export default function ProfileScreen({ currentUser, orders, onLogout }: ProfileScreenProps) {
+export default function ManHinhCaNhan({ nguoiDungHienTai, donHang, khiDangXuat }: ThuocTinhCaNhan) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.profile}>
@@ -16,18 +16,18 @@ export default function ProfileScreen({ currentUser, orders, onLogout }: Profile
           source={require('../../assets/images/cantin.jpg')}
           style={styles.avatar}
         />
-        <Text style={styles.name}>{currentUser?.fullName || 'Sinh viên'}</Text>
+        <Text style={styles.name}>{nguoiDungHienTai?.hoTen || 'Sinh viên'}</Text>
         <Text style={styles.mssv}>
-          MSSV: {currentUser?.studentId || 'Chưa cập nhật'}
+          MSSV: {nguoiDungHienTai?.maSinhVien || 'Chưa cập nhật'}
         </Text>
         <Text style={styles.email}>
-          {currentUser?.email || 'Chưa cập nhật'}
+          {nguoiDungHienTai?.email || 'Chưa cập nhật'}
         </Text>
       </View>
 
       <Text style={styles.heading}>Đơn hàng gần đây</Text>
 
-      {orders.length === 0 ? (
+      {donHang.length === 0 ? (
         <View style={styles.emptyOrders}>
           <Text style={styles.emptyIcon}>🧾</Text>
           <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
@@ -36,26 +36,26 @@ export default function ProfileScreen({ currentUser, orders, onLogout }: Profile
           </Text>
         </View>
       ) : (
-        orders.map((order, index) => (
-          <View style={styles.order} key={order.id}>
+        donHang.map((don, viTri) => (
+          <View style={styles.order} key={don.ma}>
             <View style={styles.orderHeader}>
               <Text style={styles.orderId}>
-                Đơn #{String(orders.length - index).padStart(3, '0')}
+                Đơn #{String(donHang.length - viTri).padStart(3, '0')}
               </Text>
-              <Text style={styles.date}>{order.createdAt}</Text>
+              <Text style={styles.date}>{don.ngayTao}</Text>
             </View>
-            {order.items.map((item) => (
-              <Text style={styles.itemText} key={item.id}>
-                {item.name} x{item.quantity}
+            {don.cacMon.map((mon) => (
+              <Text style={styles.itemText} key={mon.ma}>
+                {mon.ten} x{mon.soLuong}
               </Text>
             ))}
-            <Text style={styles.total}>Tổng tiền: {formatPrice(order.total)}</Text>
-            <Text style={styles.status}>Trạng thái: {order.status}</Text>
+            <Text style={styles.total}>Tổng tiền: {dinhDangGia(don.tongTien)}</Text>
+            <Text style={styles.status}>Trạng thái: {don.trangThai}</Text>
           </View>
         ))
       )}
 
-      <Pressable style={styles.logout} onPress={onLogout}>
+      <Pressable style={styles.logout} onPress={khiDangXuat}>
         <Text style={styles.logoutText}>Đăng xuất</Text>
       </Pressable>
     </ScrollView>

@@ -1,37 +1,37 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type ScreenName = 'login' | 'register' | 'home' | 'detail' | 'cart' | 'profile';
+export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'chiTiet' | 'gioHang' | 'caNhan';
 
-export interface User {
-  fullName: string;
-  studentId: string;
+export interface NguoiDung {
+  hoTen: string;
+  maSinhVien: string;
   email: string;
-  password: string;
+  matKhau: string;
 }
 
-export interface Food {
-  id: number;
-  name: string;
-  price: number;
-  image: ImageSourcePropType;
-  description: string;
-  available: boolean;
+export interface MonAn {
+  ma: number;
+  ten: string;
+  gia: number;
+  hinhAnh: ImageSourcePropType;
+  moTa: string;
+  conMon: boolean;
 }
 
-export interface CartItem extends Food {
-  quantity: number;
+export interface MonTrongGioHang extends MonAn {
+  soLuong: number;
 }
 
-export interface OrderItem {
-  id: number;
-  name: string;
-  quantity: number;
+export interface MonTrongDon {
+  ma: number;
+  ten: string;
+  soLuong: number;
 }
 
-export interface Order {
-  id: number;
-  items: OrderItem[];
-  total: number;
-  status: string;
-  createdAt: string;
+export interface DonHang {
+  ma: number;
+  cacMon: MonTrongDon[];
+  tongTien: number;
+  trangThai: string;
+  ngayTao: string;
 }

@@ -1,77 +1,76 @@
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { Dispatch, SetStateAction } from 'react';
-import { formatPrice } from '../data/foods';
-import type { CartItem, Order } from '../types';
+import { dinhDangGia } from '../data/foods';
+import type { DonHang, MonTrongGioHang } from '../types';
 
-interface CartScreenProps {
-  cart: CartItem[];
-  setCart: Dispatch<SetStateAction<CartItem[]>>;
-  setOrders: Dispatch<SetStateAction<Order[]>>;
-  onHome: () => void;
+interface ThuocTinhGioHang {
+  gioHang: MonTrongGioHang[];
+  setGioHang: (gioHangMoi: MonTrongGioHang[]) => void;
+  themDonHang: (donHangMoi: DonHang) => void;
+  khiVeTrangChu: () => void;
 }
 
-export default function CartScreen({ cart, setCart, setOrders, onHome }: CartScreenProps) {
-  function changeQuantity(id: number, amount: number) {
-    setCart(
-      cart
-        .map((item) =>
-          item.id === id
-            ? { ...item, quantity: item.quantity + amount }
-            : item
+export default function ManHinhGioHang({ gioHang, setGioHang, themDonHang, khiVeTrangChu }: ThuocTinhGioHang) {
+  function thayDoiSoLuong(ma: number, mucThayDoi: number) {
+    setGioHang(
+      gioHang
+        .map((mon) =>
+          mon.ma === ma
+            ? { ...mon, soLuong: mon.soLuong + mucThayDoi }
+            : mon
         )
-        .filter((item) => item.quantity > 0)
+        .filter((mon) => mon.soLuong > 0)
     );
   }
 
-  function removeItem(id: number) {
-    setCart(cart.filter((item) => item.id !== id));
+  function xoaMon(ma: number) {
+    setGioHang(gioHang.filter((mon) => mon.ma !== ma));
   }
 
-  function clearAll() {
+  function xoaTatCa() {
     Alert.alert(
       'Xác nhận',
       'Bạn có chắc muốn xóa toàn bộ giỏ hàng không?',
       [
         { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa', style: 'destructive', onPress: () => setCart([]) },
+        { text: 'Xóa', style: 'destructive', onPress: () => setGioHang([]) },
       ]
     );
   }
 
-  if (cart.length === 0) {
+  if (gioHang.length === 0) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyIcon}>🛒</Text>
         <Text style={styles.emptyTitle}>Giỏ hàng đang trống</Text>
         <Text style={styles.emptyText}>Hãy chọn món ăn yêu thích của bạn.</Text>
-        <Pressable style={styles.orderButton} onPress={onHome}>
+        <Pressable style={styles.orderButton} onPress={khiVeTrangChu}>
           <Text style={styles.orderText}>Xem thực đơn</Text>
         </Pressable>
       </View>
     );
   }
 
-  let total = 0;
-  for (let i = 0; i < cart.length; i++) {
-    total = total + cart[i].price * cart[i].quantity;
+  let tongTien = 0;
+  for (let viTri = 0; viTri < gioHang.length; viTri++) {
+    tongTien = tongTien + gioHang[viTri].gia * gioHang[viTri].soLuong;
   }
 
-  function placeOrder() {
-    const newOrder: Order = {
-      id: Date.now(),
-      items: cart.map((item) => ({
-        id: item.id,
-        name: item.name,
-        quantity: item.quantity,
+  function datHang() {
+    const donHangMoi: DonHang = {
+      ma: Date.now(),
+      cacMon: gioHang.map((mon) => ({
+        ma: mon.ma,
+        ten: mon.ten,
+        soLuong: mon.soLuong,
       })),
-      total,
-      status: 'Đang chuẩn bị',
-      createdAt: new Date().toLocaleDateString('vi-VN'),
+      tongTien,
+      trangThai: 'Đang chuẩn bị',
+      ngayTao: new Date().toLocaleDateString('vi-VN'),
     };
 
     // Đơn hàng chỉ được tạo sau khi người dùng bấm Đặt suất ăn.
-    setOrders((oldOrders) => [newOrder, ...oldOrders]);
-    setCart([]);
+    themDonHang(donHangMoi);
+    setGioHang([]);
     Alert.alert('Thành công', 'Đặt suất ăn thành công.');
   }
 
@@ -80,40 +79,40 @@ export default function CartScreen({ cart, setCart, setOrders, onHome }: CartScr
       <View style={styles.titleRow}>
         <View>
           <Text style={styles.title}>Giỏ hàng</Text>
-          <Text style={styles.subtitle}>{cart.length} món ăn trong giỏ</Text>
+          <Text style={styles.subtitle}>{gioHang.length} món ăn trong giỏ</Text>
         </View>
-        <Pressable onPress={clearAll}>
+        <Pressable onPress={xoaTatCa}>
           <Text style={styles.clear}>Xóa tất cả</Text>
         </Pressable>
       </View>
 
-      {cart.map((item) => (
-        <View style={styles.item} key={item.id}>
-          <Image source={item.image} resizeMode="cover" style={styles.image} />
+      {gioHang.map((mon) => (
+        <View style={styles.item} key={mon.ma}>
+          <Image source={mon.hinhAnh} resizeMode="cover" style={styles.image} />
           <View style={styles.info}>
             <View style={styles.nameRow}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Pressable onPress={() => removeItem(item.id)}>
+              <Text style={styles.name}>{mon.ten}</Text>
+              <Pressable onPress={() => xoaMon(mon.ma)}>
                 <Text style={styles.delete}>🗑 Xóa</Text>
               </Pressable>
             </View>
-            <Text style={styles.price}>{formatPrice(item.price)}</Text>
+            <Text style={styles.price}>{dinhDangGia(mon.gia)}</Text>
             <View style={styles.row}>
               <Pressable
                 style={styles.smallButton}
-                onPress={() => changeQuantity(item.id, -1)}
+                onPress={() => thayDoiSoLuong(mon.ma, -1)}
               >
                 <Text>−</Text>
               </Pressable>
-              <Text style={styles.quantity}>{item.quantity}</Text>
+              <Text style={styles.quantity}>{mon.soLuong}</Text>
               <Pressable
                 style={styles.smallButton}
-                onPress={() => changeQuantity(item.id, 1)}
+                onPress={() => thayDoiSoLuong(mon.ma, 1)}
               >
                 <Text>+</Text>
               </Pressable>
               <Text style={styles.subtotal}>
-                {formatPrice(item.price * item.quantity)}
+                {dinhDangGia(mon.gia * mon.soLuong)}
               </Text>
             </View>
           </View>
@@ -122,9 +121,9 @@ export default function CartScreen({ cart, setCart, setOrders, onHome }: CartScr
 
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Tổng cộng</Text>
-        <Text style={styles.total}>{formatPrice(total)}</Text>
+        <Text style={styles.total}>{dinhDangGia(tongTien)}</Text>
       </View>
-      <Pressable style={styles.orderButton} onPress={placeOrder}>
+      <Pressable style={styles.orderButton} onPress={datHang}>
         <Text style={styles.orderText}>Đặt suất ăn</Text>
       </Pressable>
     </ScrollView>
