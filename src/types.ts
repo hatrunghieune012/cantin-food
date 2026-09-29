@@ -6,7 +6,7 @@ export interface NguoiDung {
   hoTen: string;
   maSinhVien: string;
   email: string;
-  matKhau: string;
+  matKhau?: string;
 }
 
 export interface MonAn {

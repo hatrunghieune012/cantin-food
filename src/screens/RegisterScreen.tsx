@@ -1,11 +1,16 @@
 import { useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import type { NguoiDung } from '../types';
 
 interface ThuocTinhDangKy {
   khiDangKy: (nguoiDung: NguoiDung) => void;
   khiQuayLai: () => void;
 }
+
+// Web gọi localhost; điện thoại thật gọi địa chỉ LAN của máy tính chạy backend.
+const API_URL = Platform.OS === 'web'
+  ? 'http://localhost:3000/api/register'
+  : 'http://10.21.61.245:3000/api/register';
 
 export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy) {
   const [hoTen, setHoTen] = useState('');
@@ -14,20 +19,61 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
   const [matKhau, setMatKhau] = useState('');
   const [xacNhanMatKhau, setXacNhanMatKhau] = useState('');
   const [thongBao, setThongBao] = useState('');
+  const [dangGui, setDangGui] = useState(false);
 
   // Hàm xử lý chạy khi người dùng nhấn nút Đăng ký.
-  function xuLyDangKy() {
-    if (hoTen === '' || maSinhVien === '' || email === '' || matKhau === '' || xacNhanMatKhau === '') {
+  async function xuLyDangKy() {
+    const hoTenDaCat = hoTen.trim();
+    const maSinhVienDaCat = maSinhVien.trim();
+    const emailDaCat = email.trim();
+
+    if (!hoTenDaCat || !maSinhVienDaCat || !emailDaCat || !matKhau || !xacNhanMatKhau) {
       setThongBao('Vui lòng nhập đầy đủ thông tin.');
-    } else if (matKhau !== xacNhanMatKhau) {
+      return;
+    }
+
+    if (matKhau !== xacNhanMatKhau) {
       setThongBao('Mật khẩu xác nhận không khớp.');
-    } else {
-      khiDangKy({
-        hoTen,
-        maSinhVien,
-        email,
-        matKhau,
+      return;
+    }
+
+    try {
+      setDangGui(true);
+      setThongBao('');
+
+      // fetch gửi dữ liệu JSON từ các TextInput đến API đăng ký.
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: hoTenDaCat,
+          student_code: maSinhVienDaCat,
+          email: emailDaCat,
+          password: matKhau,
+        }),
       });
+
+      const data: { message?: string } = await response.json();
+
+      if (!response.ok) {
+        setThongBao(data.message || 'Đăng ký không thành công.');
+        return;
+      }
+
+      setThongBao(data.message || 'Đăng ký thành công');
+      // Chờ một chút để người dùng nhìn thấy thông báo rồi mới quay lại đăng nhập.
+      setTimeout(() => {
+        khiDangKy({
+          hoTen: hoTenDaCat,
+          maSinhVien: maSinhVienDaCat,
+          email: emailDaCat,
+          matKhau,
+        });
+      }, 1000);
+    } catch (error) {
+      setThongBao('Không thể kết nối đến server.');
+    } finally {
+      setDangGui(false);
     }
   }
 
@@ -57,8 +103,8 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
 
         {thongBao !== '' && <Text style={styles.message}>{thongBao}</Text>}
 
-        <Pressable style={styles.button} onPress={xuLyDangKy}>
-          <Text style={styles.buttonText}>Đăng ký</Text>
+        <Pressable style={styles.button} onPress={xuLyDangKy} disabled={dangGui}>
+          <Text style={styles.buttonText}>{dangGui ? 'Đang đăng ký...' : 'Đăng ký'}</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>

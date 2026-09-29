@@ -22,7 +22,6 @@ export default function UngDung() {
       <>
         <StatusBar style="dark" />
         <ManHinhDangNhap
-          danhSachNguoiDung={nguoiDung}
           khiDangNhap={(taiKhoan) => {
             setNguoiDungHienTai(taiKhoan);
             setManHinh('trangChu');

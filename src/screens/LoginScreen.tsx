@@ -1,33 +1,70 @@
 import { useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NguoiDung } from '../types';
 
 interface ThuocTinhDangNhap {
-  danhSachNguoiDung: NguoiDung[];
   khiDangNhap: (taiKhoan: NguoiDung) => void;
   khiDangKy: () => void;
 }
 
-export default function ManHinhDangNhap({ danhSachNguoiDung, khiDangNhap, khiDangKy }: ThuocTinhDangNhap) {
+// Web gọi localhost; điện thoại thật gọi địa chỉ LAN của máy tính chạy backend.
+const API_URL = Platform.OS === 'web'
+  ? 'http://localhost:3000/api/login'
+  : 'http://10.21.61.245:3000/api/login';
+
+interface DuLieuDangNhap {
+  message?: string;
+  user?: {
+    full_name: string;
+    student_code: string;
+    email: string;
+  };
+}
+
+export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDangNhap) {
   const [maSinhVien, setMaSinhVien] = useState('');
   const [matKhau, setMatKhau] = useState('');
   const [thongBao, setThongBao] = useState('');
+  const [dangGui, setDangGui] = useState(false);
 
-  function xuLyDangNhap() {
-    if (maSinhVien === '' || matKhau === '') {
+  async function xuLyDangNhap() {
+    const maSinhVienDaCat = maSinhVien.trim();
+
+    if (!maSinhVienDaCat || !matKhau) {
       setThongBao('Vui lòng nhập đầy đủ mã sinh viên và mật khẩu.');
       return;
     }
 
-    const taiKhoan = danhSachNguoiDung.find(
-      (nguoi) => nguoi.maSinhVien === maSinhVien && nguoi.matKhau === matKhau,
-    );
-
-    if (taiKhoan) {
+    try {
+      setDangGui(true);
       setThongBao('');
-      khiDangNhap(taiKhoan);
-    } else {
-      setThongBao('Mã sinh viên hoặc mật khẩu không đúng.');
+
+      // Gửi MSSV và mật khẩu đến API để kiểm tra tài khoản trong MySQL.
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_code: maSinhVienDaCat,
+          password: matKhau,
+        }),
+      });
+
+      const data: DuLieuDangNhap = await response.json();
+
+      if (!response.ok || !data.user) {
+        setThongBao(data.message || 'Đăng nhập không thành công.');
+        return;
+      }
+
+      khiDangNhap({
+        hoTen: data.user.full_name,
+        maSinhVien: data.user.student_code,
+        email: data.user.email,
+      });
+    } catch (error) {
+      setThongBao('Không thể kết nối đến server.');
+    } finally {
+      setDangGui(false);
     }
   }
 
@@ -56,8 +93,8 @@ export default function ManHinhDangNhap({ danhSachNguoiDung, khiDangNhap, khiDan
 
         {thongBao !== '' && <Text style={styles.message}>{thongBao}</Text>}
 
-        <Pressable style={styles.button} onPress={xuLyDangNhap}>
-          <Text style={styles.buttonText}>Đăng nhập</Text>
+        <Pressable style={styles.button} onPress={xuLyDangNhap} disabled={dangGui}>
+          <Text style={styles.buttonText}>{dangGui ? 'Đang đăng nhập...' : 'Đăng nhập'}</Text>
         </Pressable>
 
         <Pressable onPress={khiDangKy}>
