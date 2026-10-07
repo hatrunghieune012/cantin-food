@@ -4,7 +4,8 @@
   "description": "Backend API đăng ký tài khoản cho Smart Canteen",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "create-admin": "node scripts/create-admin.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ManHinhDangNhap from './src/screens/LoginScreen';
@@ -8,6 +8,7 @@ import ManHinhThucDon from './src/screens/MenuScreen';
 import ManHinhChiTietMon from './src/screens/FoodDetailScreen';
 import ManHinhGioHang from './src/screens/CartScreen';
 import ManHinhCaNhan from './src/screens/ProfileScreen';
+import ManHinhAdmin from './src/screens/AdminScreen';
 import type { DonHang, MonAn, MonTrongGioHang, NguoiDung, TenManHinh } from './src/types';
 
 const KHOA_PHIEN_DANG_NHAP = 'smart-canteen-user';
@@ -16,11 +17,12 @@ function layNguoiDungDaLuu(): NguoiDung | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
 
   try {
-    const duLieu = window.localStorage.getItem(KHOA_PHIEN_DANG_NHAP);
+    // sessionStorage tách phiên đăng nhập theo từng tab trình duyệt.
+    const duLieu = window.sessionStorage.getItem(KHOA_PHIEN_DANG_NHAP);
     if (!duLieu) return null;
     const nguoiDung = JSON.parse(duLieu) as Partial<NguoiDung>;
-    if (!nguoiDung.hoTen || !nguoiDung.maSinhVien || !nguoiDung.email) return null;
-    return { hoTen: nguoiDung.hoTen, maSinhVien: nguoiDung.maSinhVien, email: nguoiDung.email };
+    if (!nguoiDung.id || !nguoiDung.hoTen || !nguoiDung.email || !nguoiDung.role || !nguoiDung.token) return null;
+    return nguoiDung as NguoiDung;
   } catch {
     return null;
   }
@@ -31,13 +33,21 @@ function luuNguoiDung(nguoiDung: NguoiDung | null) {
 
   try {
     if (nguoiDung) {
-      const duLieuAnToan = { hoTen: nguoiDung.hoTen, maSinhVien: nguoiDung.maSinhVien, email: nguoiDung.email };
-      window.localStorage.setItem(KHOA_PHIEN_DANG_NHAP, JSON.stringify(duLieuAnToan));
+      const duLieuAnToan = {
+        id: nguoiDung.id,
+        hoTen: nguoiDung.hoTen,
+        maSinhVien: nguoiDung.maSinhVien,
+        email: nguoiDung.email,
+        phone: nguoiDung.phone,
+        role: nguoiDung.role,
+        token: nguoiDung.token,
+      };
+      window.sessionStorage.setItem(KHOA_PHIEN_DANG_NHAP, JSON.stringify(duLieuAnToan));
     } else {
-      window.localStorage.removeItem(KHOA_PHIEN_DANG_NHAP);
+      window.sessionStorage.removeItem(KHOA_PHIEN_DANG_NHAP);
     }
   } catch {
-    // Trình duyệt có thể chặn localStorage ở chế độ riêng tư; đăng nhập vẫn hoạt động trong phiên hiện tại.
+    // Trình duyệt có thể chặn sessionStorage ở chế độ riêng tư; đăng nhập vẫn hoạt động trong state của tab hiện tại.
   }
 }
 
@@ -45,7 +55,10 @@ export default function UngDung() {
   const { width } = useWindowDimensions();
   const laDesktop = width >= 760;
   const [phienDangNhapBanDau] = useState<NguoiDung | null>(() => layNguoiDungDaLuu());
-  const [manHinh, setManHinh] = useState<TenManHinh>(() => phienDangNhapBanDau ? 'trangChu' : 'dangNhap');
+  const [manHinh, setManHinh] = useState<TenManHinh>(() => {
+    if (!phienDangNhapBanDau) return 'dangNhap';
+    return phienDangNhapBanDau.role === 'admin' ? 'admin' : 'trangChu';
+  });
   const [nguoiDung, setNguoiDung] = useState<NguoiDung[]>([]);
   const [monDangChon, setMonDangChon] = useState<MonAn | null>(null);
   const [gioHang, setGioHang] = useState<MonTrongGioHang[]>([]);
@@ -53,13 +66,49 @@ export default function UngDung() {
   const [nguoiDungHienTai, setNguoiDungHienTai] = useState<NguoiDung | null>(phienDangNhapBanDau);
   const [hienMenuTaiKhoan, setHienMenuTaiKhoan] = useState(false);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const duongDanDung = nguoiDungHienTai?.role === 'admin' ? '/admin' : '/';
+    if (window.location.pathname !== duongDanDung) {
+      window.history.replaceState({}, '', duongDanDung);
+    }
+  }, [nguoiDungHienTai]);
+
+  useEffect(() => {
+    if (!nguoiDungHienTai || nguoiDungHienTai.role !== 'user') return;
+    const apiUrl = Platform.OS === 'web' ? 'http://localhost:3000/api/orders' : 'http://10.21.61.245:3000/api/orders';
+    fetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json();
+        const orders: DonHang[] = (data.orders || []).map((order: any) => ({
+          ma: order.id,
+          cacMon: order.items.map((item: any) => ({ ma: item.food_id, ten: item.food_name, gia: Number(item.price), soLuong: item.quantity })),
+          tongTien: Number(order.total_amount),
+          phone: order.phone,
+          diaChiGiaoHang: order.delivery_address,
+          ghiChu: order.note || '',
+          trangThai: order.status,
+          ngayTao: new Date(order.created_at).toLocaleString('vi-VN'),
+        }));
+        setDonHang(orders);
+      })
+      .catch(() => undefined);
+  }, [nguoiDungHienTai]);
+
   function dangXuat() {
+    const token = nguoiDungHienTai?.token;
+    if (token) {
+      const apiUrl = Platform.OS === 'web' ? 'http://localhost:3000/api/logout' : 'http://10.21.61.245:3000/api/logout';
+      fetch(apiUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
+    }
     luuNguoiDung(null);
     setHienMenuTaiKhoan(false);
     setNguoiDungHienTai(null);
     setGioHang([]);
     setDonHang([]);
     setManHinh('dangNhap');
+    if (Platform.OS === 'web' && typeof window !== 'undefined') window.history.replaceState({}, '', '/');
   }
 
   function chonMon(monAn: MonAn) {
@@ -68,11 +117,30 @@ export default function UngDung() {
   }
 
   if (manHinh === 'dangNhap') {
-    return <><StatusBar style="dark" /><ManHinhDangNhap khiDangNhap={(taiKhoan) => { luuNguoiDung(taiKhoan); setNguoiDungHienTai(taiKhoan); setManHinh('trangChu'); }} khiDangKy={() => setManHinh('dangKy')} /></>;
+    return <><StatusBar style="dark" /><ManHinhDangNhap khiDangNhap={(taiKhoan) => {
+      luuNguoiDung(taiKhoan);
+      setNguoiDungHienTai(taiKhoan);
+      const manHinhSauDangNhap = taiKhoan.role === 'admin' ? 'admin' : 'trangChu';
+      setManHinh(manHinhSauDangNhap);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.history.replaceState({}, '', taiKhoan.role === 'admin' ? '/admin' : '/');
+      }
+    }} khiDangKy={() => setManHinh('dangKy')} /></>;
   }
 
   if (manHinh === 'dangKy') {
     return <><StatusBar style="dark" /><ManHinhDangKy khiDangKy={(taiKhoan) => { setNguoiDung([...nguoiDung, taiKhoan]); setManHinh('dangNhap'); }} khiQuayLai={() => setManHinh('dangNhap')} /></>;
+  }
+
+  // Route Admin chỉ hiển thị khi phiên đăng nhập thực sự có role admin.
+  if (manHinh === 'admin') {
+    if (!nguoiDungHienTai || nguoiDungHienTai.role !== 'admin') {
+      luuNguoiDung(null);
+      setManHinh('dangNhap');
+      return null;
+    }
+
+    return <><StatusBar style="dark" /><ManHinhAdmin tenAdmin={nguoiDungHienTai.hoTen} token={nguoiDungHienTai.token} khiDangXuat={dangXuat} /></>;
   }
 
   const ten = nguoiDungHienTai?.hoTen || 'Sinh viên';
@@ -115,9 +183,9 @@ export default function UngDung() {
 
       <View style={styles.content}>
         {manHinh === 'trangChu' && <ManHinhTrangChu nguoiDungHienTai={nguoiDungHienTai} khiChonMon={chonMon} khiXemThucDon={() => setManHinh('thucDon')} />}
-        {manHinh === 'thucDon' && <ManHinhThucDon khiChonMon={chonMon} />}
+        {manHinh === 'thucDon' && <ManHinhThucDon khiChonMon={chonMon} gioHang={gioHang} setGioHang={setGioHang} />}
         {manHinh === 'chiTiet' && <ManHinhChiTietMon monAn={monDangChon} gioHang={gioHang} setGioHang={setGioHang} khiQuayLai={() => setManHinh('thucDon')} khiXemGioHang={() => setManHinh('gioHang')} />}
-        {manHinh === 'gioHang' && <ManHinhGioHang gioHang={gioHang} setGioHang={setGioHang} themDonHang={(donMoi) => setDonHang([donMoi, ...donHang])} khiVeTrangChu={() => setManHinh('thucDon')} />}
+        {manHinh === 'gioHang' && <ManHinhGioHang gioHang={gioHang} setGioHang={setGioHang} nguoiDungHienTai={nguoiDungHienTai} themDonHang={(donMoi) => setDonHang([donMoi, ...donHang])} khiVeTrangChu={() => setManHinh('thucDon')} />}
         {manHinh === 'caNhan' && <ManHinhCaNhan nguoiDungHienTai={nguoiDungHienTai} donHang={donHang} khiDangXuat={dangXuat} />}
       </View>
 

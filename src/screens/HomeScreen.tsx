@@ -100,6 +100,6 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   heading: { color: '#20242A', fontSize: 22, fontWeight: '900' },
   seeAll: { color: '#F15F24', fontSize: 13, fontWeight: '700' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', columnGap: 16 },
   empty: { paddingVertical: 40, color: '#8A9099', textAlign: 'center' },
 });

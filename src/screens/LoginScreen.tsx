@@ -24,7 +24,8 @@ const API_URL = Platform.OS === 'web'
 
 interface DuLieuDangNhap {
   message?: string;
-  user?: { full_name: string; student_code: string; email: string };
+  token?: string;
+  user?: { id: number; name: string; student_code: string; email: string; phone: string | null; role: 'user' | 'admin' };
 }
 
 export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDangNhap) {
@@ -54,15 +55,19 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
       });
       const data: DuLieuDangNhap = await response.json();
 
-      if (!response.ok || !data.user) {
+      if (!response.ok || !data.user || !data.token) {
         setThongBao(data.message || 'Đăng nhập không thành công.');
         return;
       }
 
       khiDangNhap({
-        hoTen: data.user.full_name,
+        id: data.user.id,
+        hoTen: data.user.name,
         maSinhVien: data.user.student_code,
         email: data.user.email,
+        phone: data.user.phone || '',
+        role: data.user.role,
+        token: data.token,
       });
     } catch (error) {
       setThongBao('Không thể kết nối đến server.');

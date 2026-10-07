@@ -16,6 +16,7 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
   const [hoTen, setHoTen] = useState('');
   const [maSinhVien, setMaSinhVien] = useState('');
   const [email, setEmail] = useState('');
+  const [soDienThoai, setSoDienThoai] = useState('');
   const [matKhau, setMatKhau] = useState('');
   const [xacNhanMatKhau, setXacNhanMatKhau] = useState('');
   const [thongBao, setThongBao] = useState('');
@@ -26,9 +27,15 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
     const hoTenDaCat = hoTen.trim();
     const maSinhVienDaCat = maSinhVien.trim();
     const emailDaCat = email.trim();
+    const soDienThoaiDaCat = soDienThoai.trim();
 
-    if (!hoTenDaCat || !maSinhVienDaCat || !emailDaCat || !matKhau || !xacNhanMatKhau) {
+    if (!hoTenDaCat || !maSinhVienDaCat || !emailDaCat || !soDienThoaiDaCat || !matKhau || !xacNhanMatKhau) {
       setThongBao('Vui lòng nhập đầy đủ thông tin.');
+      return;
+    }
+
+    if (!/^\+?[0-9]{8,15}$/.test(soDienThoaiDaCat)) {
+      setThongBao('Số điện thoại phải có từ 8 đến 15 chữ số.');
       return;
     }
 
@@ -49,6 +56,7 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
           full_name: hoTenDaCat,
           student_code: maSinhVienDaCat,
           email: emailDaCat,
+          phone: soDienThoaiDaCat,
           password: matKhau,
         }),
       });
@@ -64,10 +72,13 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
       // Chờ một chút để người dùng nhìn thấy thông báo rồi mới quay lại đăng nhập.
       setTimeout(() => {
         khiDangKy({
+          id: 0,
           hoTen: hoTenDaCat,
           maSinhVien: maSinhVienDaCat,
           email: emailDaCat,
-          matKhau,
+          phone: soDienThoaiDaCat,
+          role: 'user',
+          token: '',
         });
       }, 1000);
     } catch (error) {
@@ -94,6 +105,9 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
 
         <Text style={styles.label}>Email</Text>
         <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Nhập email" keyboardType="email-address" autoCapitalize="none" />
+
+        <Text style={styles.label}>Số điện thoại</Text>
+        <TextInput style={styles.input} value={soDienThoai} onChangeText={setSoDienThoai} placeholder="Nhập số điện thoại" keyboardType="phone-pad" />
 
         <Text style={styles.label}>Mật khẩu</Text>
         <TextInput style={styles.input} value={matKhau} onChangeText={setMatKhau} placeholder="Nhập mật khẩu" secureTextEntry />

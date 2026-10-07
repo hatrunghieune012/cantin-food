@@ -1,12 +1,15 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan';
+export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan' | 'admin';
 
 export interface NguoiDung {
+  id: number;
   hoTen: string;
   maSinhVien: string;
   email: string;
-  matKhau?: string;
+  phone: string;
+  role: 'user' | 'admin';
+  token: string;
 }
 
 export interface MonAn {
@@ -26,6 +29,7 @@ export interface MonTrongGioHang extends MonAn {
 export interface MonTrongDon {
   ma: number;
   ten: string;
+  gia: number;
   soLuong: number;
 }
 
@@ -33,6 +37,9 @@ export interface DonHang {
   ma: number;
   cacMon: MonTrongDon[];
   tongTien: number;
+  phone: string;
+  diaChiGiaoHang: string;
+  ghiChu: string;
   trangThai: string;
   ngayTao: string;
 }
