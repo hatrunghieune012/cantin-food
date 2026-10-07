@@ -1,0 +1,185 @@
+HƯỚNG DẪN LẤY CODE VÀ CHẠY DỰ ÁN SMART CANTEEN
+================================================
+
+Yêu cầu:
+- Git, Node.js 18 trở lên và MySQL.
+- Dùng hai cửa sổ Terminal: backend và frontend.
+
+1. LẤY CODE LẦN ĐẦU
+--------------------
+
+git clone https://github.com/hatrunghieune012/cantin-food.git
+cd cantin-food
+npm install
+cd backend
+npm install
+cd ..
+
+2. KÉO CODE MỚI NHẤT
+---------------------
+
+cd đường-dẫn-tới-thư-mục-cantin-food
+git status
+git switch main
+git pull origin main
+npm install
+cd backend
+npm install
+cd ..
+
+Không dùng "git reset --hard" nếu đang có code chưa lưu vì có thể mất thay đổi.
+
+3. CẤU HÌNH BACKEND
+-------------------
+
+Tạo backend/.env nếu chưa có:
+
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=ten_tai_khoan_mysql
+DB_PASSWORD=mat_khau_mysql
+DB_NAME=smart_canteen
+PORT=3000
+
+Không đưa .env lên GitHub. Database cần bảng accounts gồm các cột:
+id, full_name, student_code, email, password.
+Cột password nên là VARCHAR(255) để chứa bcrypt hash.
+
+4. CHẠY DỰ ÁN
+--------------
+
+Terminal 1 - backend:
+
+cd backend
+npm start
+
+Chạy đúng sẽ hiện:
+Kết nối MySQL thành công
+Server đang chạy tại http://localhost:3000
+
+Terminal 2 - frontend web (đứng tại thư mục gốc):
+
+npm run web
+
+Mở địa chỉ Expo hiển thị trong Terminal, thường là http://localhost:8081.
+
+Các lệnh khác:
+
+npm start              Chạy Expo và chọn nền tảng
+npm run android        Chạy Android
+npm run ios            Chạy iOS (cần macOS)
+npm run typecheck      Kiểm tra TypeScript
+npx expo start --web --clear   Chạy web và xóa cache
+
+5. LỖI GIT THƯỜNG GẶP
+----------------------
+
+"git is not recognized"
+- Chưa cài Git hoặc Git chưa có trong PATH.
+- Cài Git for Windows rồi mở Terminal mới.
+
+"fatal: not a git repository"
+- Terminal chưa đứng trong thư mục cantin-food.
+
+"Your local changes would be overwritten by merge"
+- Máy đang có code chưa commit. Có thể lưu bằng commit:
+
+git status
+git add .
+git commit -m "Lưu thay đổi local trước khi pull"
+git pull origin main
+
+Hoặc tạm cất thay đổi:
+
+git stash
+git pull origin main
+git stash pop
+
+Nếu stash pop hoặc pull báo conflict, sửa các file có dấu conflict rồi chạy:
+
+git add .
+git commit -m "Resolve merge conflict"
+
+6. LỖI NODE/NPM
+----------------
+
+"npm is not recognized"
+- Cài Node.js LTS, mở lại Terminal rồi kiểm tra:
+
+node -v
+npm -v
+
+"Cannot find module..."
+- Chạy npm install tại thư mục bị lỗi.
+- Nếu lỗi backend: cd backend rồi chạy npm install.
+
+Lỗi bcrypt hoặc "Unsupported engine"
+- Dùng Node.js 18 trở lên rồi chạy lại npm install trong backend.
+
+7. LỖI MYSQL/BACKEND
+---------------------
+
+"ECONNREFUSED 127.0.0.1:3306" hoặc "Kết nối MySQL thất bại"
+- Khởi động MySQL.
+- Kiểm tra DB_HOST, DB_PORT và DB_NAME trong backend/.env.
+
+"Access denied for user"
+- Sai DB_USER/DB_PASSWORD hoặc tài khoản chưa có quyền truy cập database.
+
+"Unknown database 'smart_canteen'"
+- Tạo database trong MySQL:
+
+CREATE DATABASE smart_canteen CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+"Table 'smart_canteen.accounts' doesn't exist"
+- Chưa tạo/import bảng accounts hoặc DB_NAME đang sai.
+
+"EADDRINUSE: address already in use :::3000"
+- Một backend khác đang dùng cổng 3000. Kiểm tra PowerShell:
+
+Get-NetTCPConnection -LocalPort 3000 -State Listen
+
+- Đóng backend cũ hoặc đổi PORT. Nếu đổi PORT phải sửa API_URL frontend cho cùng cổng.
+
+Đăng nhập vẫn hiện thông báo/code cũ
+- Backend cũ vẫn chạy sau khi pull. Nhấn Ctrl+C tại Terminal backend rồi chạy lại:
+
+cd backend
+npm start
+
+8. LỖI FRONTEND/EXPO
+---------------------
+
+Frontend không kết nối được server:
+- Kiểm tra backend đang chạy tại cổng 3000.
+- Web dùng http://localhost:3000.
+- Điện thoại thật phải dùng IP LAN của máy tính, không dùng localhost.
+- Điện thoại và máy tính phải cùng Wi-Fi.
+- Windows Firewall có thể đang chặn Node.js/cổng 3000.
+
+Expo hiển thị code cũ hoặc lỗi cache:
+
+npx expo start --web --clear
+
+Trang trắng sau khi sửa code:
+
+npm run typecheck
+npx expo start --web --clear
+
+Sau đó xem lỗi trong Terminal và Console trình duyệt (F12).
+
+F5 bị yêu cầu đăng nhập lại:
+- Phiên web được lưu trong localStorage.
+- Đăng xuất hoặc xóa dữ liệu trang web/localStorage sẽ xóa phiên.
+
+9. KIỂM TRA VÀ ĐẨY CODE
+-----------------------
+
+git status
+npm run typecheck
+git add <các-file-cần-đưa-lên>
+git commit -m "Mô tả thay đổi"
+git pull --rebase origin main
+git push origin main
+
+Không commit: .env, node_modules, cache/build Expo hoặc file chứa mật khẩu.
