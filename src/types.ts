@@ -1,6 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'chiTiet' | 'gioHang' | 'caNhan';
+export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan';
 
 export interface NguoiDung {
   hoTen: string;
@@ -16,6 +16,7 @@ export interface MonAn {
   hinhAnh: ImageSourcePropType;
   moTa: string;
   conMon: boolean;
+  danhMuc: 'Cơm' | 'Mì' | 'Đồ uống' | 'Ăn vặt' | 'Món khác';
 }
 
 export interface MonTrongGioHang extends MonAn {

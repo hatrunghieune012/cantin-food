@@ -1,4 +1,4 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { dinhDangGia } from '../data/foods';
 import type { MonAn } from '../types';
 
@@ -8,43 +8,45 @@ interface ThuocTinhTheMonAn {
 }
 
 export default function TheMonAn({ monAn, khiNhan }: ThuocTinhTheMonAn) {
+  const { width } = useWindowDimensions();
+  const chieuRongThe = width >= 1100 ? '23.5%' : width >= 650 ? '48.5%' : '48%';
+  const laMobile = width < 650;
+
   return (
-    <View style={styles.card}>
-      <Image source={monAn.hinhAnh} style={styles.image} />
-
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        { width: chieuRongThe, height: laMobile ? 270 : 310 },
+        pressed && styles.pressed,
+      ]}
+      onPress={khiNhan}
+    >
+      <Image
+        source={monAn.hinhAnh}
+        style={[styles.image, { height: laMobile ? 116 : 154 }]}
+        resizeMode="cover"
+      />
       <View style={styles.info}>
-        <Text style={styles.name}>{monAn.ten}</Text>
-        <Text style={styles.price}>{dinhDangGia(monAn.gia)}</Text>
-        <Text style={styles.description}>{monAn.moTa}</Text>
-
-        <Pressable style={styles.button} onPress={khiNhan}>
-          <Text style={styles.buttonText}>Xem món</Text>
-        </Pressable>
+        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{monAn.ten}</Text>
+        <Text style={styles.description} numberOfLines={2} ellipsizeMode="tail">{monAn.moTa}</Text>
+        <View style={styles.footer}>
+          <Text style={styles.price}>{dinhDangGia(monAn.gia)}</Text>
+          <View style={styles.addButton}><Text style={styles.addText}>＋</Text></View>
+        </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    padding: 12,
-    marginBottom: 12,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  image: { width: 92, height: 92, borderRadius: 12 },
-  info: { flex: 1, marginLeft: 13 },
-  name: { color: '#25282D', fontSize: 17, fontWeight: '700' },
-  price: { marginTop: 4, color: '#E86A33', fontWeight: '700' },
-  description: { marginTop: 4, color: '#858B94', fontSize: 12 },
-  button: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginTop: 8,
-    borderRadius: 8,
-    backgroundColor: '#FFF0E9',
-  },
-  buttonText: { color: '#D85624', fontSize: 12, fontWeight: '700' },
+  card: { marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#ECEEF1', borderRadius: 16, backgroundColor: '#FFFFFF', shadowColor: '#20242A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
+  pressed: { opacity: 0.88, transform: [{ scale: 0.995 }] },
+  image: { width: '100%', backgroundColor: '#F1F2F4' },
+  info: { flex: 1, minHeight: 140, padding: 13 },
+  name: { minHeight: 20, color: '#20242A', fontSize: 16, fontWeight: '800', lineHeight: 20 },
+  description: { minHeight: 34, marginTop: 5, color: '#8A9099', fontSize: 12, lineHeight: 17 },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 10 },
+  price: { color: '#F15F24', fontSize: 16, fontWeight: '800' },
+  addButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#FFF0E9' },
+  addText: { color: '#F15F24', fontSize: 18, fontWeight: '700' },
 });
