@@ -1,11 +1,13 @@
 {
-  "name": "canteen-food-backend",
+  "name": "app-canteen-backend",
   "version": "1.0.0",
-  "description": "Backend API đăng ký tài khoản cho Smart Canteen",
+  "description": "Backend API đăng ký tài khoản cho App Canteen",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "create-admin": "node scripts/create-admin.js"
+    "create-admin": "node scripts/create-admin.js",
+    "migrate": "node scripts/migrate.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

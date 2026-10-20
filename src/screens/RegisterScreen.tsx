@@ -1,3 +1,4 @@
+import { apiUrl as buildApiUrl } from '../api';
 import { useState } from 'react';
 import { Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import type { NguoiDung } from '../types';
@@ -8,9 +9,7 @@ interface ThuocTinhDangKy {
 }
 
 // Web gọi localhost; điện thoại thật gọi địa chỉ LAN của máy tính chạy backend.
-const API_URL = Platform.OS === 'web'
-  ? 'http://localhost:3000/api/register'
-  : 'http://10.21.61.245:3000/api/register';
+const API_URL = buildApiUrl('/api/register');
 
 export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy) {
   const [hoTen, setHoTen] = useState('');
@@ -41,6 +40,10 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
 
     if (matKhau !== xacNhanMatKhau) {
       setThongBao('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+    if (matKhau.length < 8) {
+      setThongBao('Mật khẩu cần ít nhất 8 ký tự.');
       return;
     }
 
@@ -77,6 +80,7 @@ export default function ManHinhDangKy({ khiDangKy, khiQuayLai }: ThuocTinhDangKy
           maSinhVien: maSinhVienDaCat,
           email: emailDaCat,
           phone: soDienThoaiDaCat,
+          defaultAddress: '',
           role: 'user',
           token: '',
         });

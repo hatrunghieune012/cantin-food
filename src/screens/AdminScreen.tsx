@@ -1,5 +1,13 @@
+import OrdersPanel from '../components/OrdersPanel';
+import AccountsPanel from '../components/AccountsPanel';
+import { Action, ui } from '../components/OperationsUI';
+import { request } from '../api';
+import CounterScreen from './CounterScreen';
+import TablesScreen from './TablesScreen';
+import { apiUrl as buildApiUrl } from '../api';
 import {
   Image,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -11,123 +19,64 @@ import {
   View,
 } from 'react-native';
 import { useEffect, useState } from 'react';
-import { danhSachMonAn, dinhDangGia } from '../data/foods';
+import { danhSachHinhAnh, dinhDangGia, layHinhAnhMonAn, type MaHinhAnh } from '../data/foods';
+import type { MonAn } from '../types';
 
 interface ThuocTinhAdmin {
   tenAdmin: string;
   token: string;
+  danhSachMonAn: MonAn[];
+  khiTaiLaiMonAn: () => Promise<void>;
   khiDangXuat: () => void;
+  loiMonAn: string;
+  dangTaiMon: boolean;
 }
 
-type TrangAdmin = 'tongQuan' | 'monAn' | 'nguoiDung' | 'donHang';
+type TrangAdmin = 'tongQuan' | 'monAn' | 'nguoiDung' | 'donHang' | 'counter' | 'tables';
 
-interface TaiKhoanAdmin {
-  id: number;
-  full_name: string;
-  student_code: string;
-  email: string;
-  phone: string | null;
-  role: 'user' | 'admin';
-}
-
-interface DonHangAdmin {
-  id: number;
-  customer_name: string;
-  phone: string;
-  delivery_address: string;
-  note: string | null;
-  total_amount: number;
-  status: string;
-  created_at: string;
-  items: { id: number; food_name: string; price: number; quantity: number }[];
+interface DashboardData {
+  todayRevenue: number;
+  totalFoods: number;
+  totalUsers: number;
+  todayOrders: number;
+  popularFoods: { id: number; name: string; price: number; sold_quantity: number }[];
+  recentOrders: { id: number; customer_name: string; total_amount: number; status: string; created_at: string }[];
+  ordersByDay: { order_date: string; total: number }[];
 }
 
 const tenTrangThai: Record<string, string> = {
-  pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', delivering: 'Đang giao',
+  pending: 'Chờ xác nhận', preparing: 'Đang chuẩn bị', ready: 'Sẵn sàng nhận', delivering: 'Đang giao (đơn cũ)',
   completed: 'Hoàn thành', cancelled: 'Đã hủy',
 };
 
-const thongKe = [
-  { icon: '♨', label: 'Tổng số món ăn', value: '15', note: '↑ 2 món so với tuần trước', color: '#FF5B16', pale: '#FFF0E9' },
-  { icon: '♙', label: 'Tổng người dùng', value: '120', note: '↑ 12 người mới', color: '#1677FF', pale: '#EAF3FF' },
-  { icon: '□', label: 'Món sắp hết hàng', value: '3', note: 'Cần cập nhật số lượng', color: '#ED3348', pale: '#FFECEE' },
-  { icon: '▤', label: 'Đơn hàng hôm nay', value: '28', note: '↑ 15% so với hôm qua', color: '#18A957', pale: '#EAF8EF' },
-];
 
-const cotDonHang = [10, 20, 16, 22, 31, 26, 35];
-const ngay = ['01/10', '02/10', '03/10', '04/10', '05/10', '06/10', '07/10'];
-const soLuongDaBan = [45, 38, 32, 25];
-const donHangGanDay = [
-  { ma: '#DH001', ten: 'Nguyễn Văn A', tong: '30.000đ', trangThai: 'Đang chuẩn bị', mau: '#F59E0B', nen: '#FFF4D9', gio: '07/10 12:30' },
-  { ma: '#DH002', ten: 'Trần Thị B', tong: '65.000đ', trangThai: 'Đã hoàn thành', mau: '#159947', nen: '#E5F8EB', gio: '07/10 12:15' },
-  { ma: '#DH003', ten: 'Lê Văn C', tong: '45.000đ', trangThai: 'Đang giao', mau: '#1677FF', nen: '#E7F1FF', gio: '07/10 11:50' },
-];
-
-export default function ManHinhAdmin({ tenAdmin, token, khiDangXuat }: ThuocTinhAdmin) {
+export default function ManHinhAdmin({ tenAdmin, token, danhSachMonAn, khiTaiLaiMonAn, khiDangXuat, loiMonAn, dangTaiMon }: ThuocTinhAdmin) {
   const { width } = useWindowDimensions();
   const laDesktop = width >= 960;
   const laManHinhNho = width < 640;
   const chuCai = tenAdmin.trim().charAt(0).toUpperCase() || 'A';
   const [trang, setTrang] = useState<TrangAdmin>('tongQuan');
-  const [taiKhoan, setTaiKhoan] = useState<TaiKhoanAdmin[]>([]);
-  const [dangTaiTaiKhoan, setDangTaiTaiKhoan] = useState(false);
-  const [daTaiTaiKhoan, setDaTaiTaiKhoan] = useState(false);
-  const [loiTaiKhoan, setLoiTaiKhoan] = useState('');
-  const [donHangAdmin, setDonHangAdmin] = useState<DonHangAdmin[]>([]);
-  const [dangTaiDonHang, setDangTaiDonHang] = useState(false);
-  const [daTaiDonHang, setDaTaiDonHang] = useState(false);
-  const [loiDonHang, setLoiDonHang] = useState('');
+  const [dashboardError, setDashboardError] = useState('');
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboard, setDashboard] = useState<DashboardData>({ todayRevenue: 0, totalFoods: 0, totalUsers: 0, todayOrders: 0, popularFoods: [], recentOrders: [], ordersByDay: [] });
 
-  useEffect(() => {
-    if (trang !== 'nguoiDung' || daTaiTaiKhoan || dangTaiTaiKhoan) return;
+  useEffect(() => { if (trang === 'monAn') khiTaiLaiMonAn(); }, [trang]);
 
-    const apiUrl = Platform.OS === 'web'
-      ? 'http://localhost:3000/api/admin/users'
-      : 'http://10.21.61.245:3000/api/admin/users';
-
-    setDangTaiTaiKhoan(true);
-    setLoiTaiKhoan('');
-    fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || 'Không thể tải người dùng');
-        setTaiKhoan(data.users || []);
-      })
-      .catch((error: Error) => setLoiTaiKhoan(error.message))
-      .finally(() => { setDangTaiTaiKhoan(false); setDaTaiTaiKhoan(true); });
-  }, [trang, daTaiTaiKhoan, dangTaiTaiKhoan, token]);
-
-  useEffect(() => {
-    if (trang !== 'donHang' || daTaiDonHang || dangTaiDonHang) return;
-    const apiUrl = Platform.OS === 'web' ? 'http://localhost:3000/api/admin/orders' : 'http://10.21.61.245:3000/api/admin/orders';
-    setDangTaiDonHang(true);
-    fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || 'Không thể tải đơn hàng');
-        setDonHangAdmin(data.orders || []);
-      })
-      .catch((error: Error) => setLoiDonHang(error.message))
-      .finally(() => { setDangTaiDonHang(false); setDaTaiDonHang(true); });
-  }, [trang, daTaiDonHang, dangTaiDonHang, token]);
-
-  async function capNhatTrangThai(orderId: number, status: string) {
-    const apiUrl = Platform.OS === 'web'
-      ? `http://localhost:3000/api/admin/orders/${orderId}/status`
-      : `http://10.21.61.245:3000/api/admin/orders/${orderId}/status`;
+  async function taiDashboard() {
+    const apiUrl = buildApiUrl('/api/admin/dashboard');
     try {
-      const response = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status }),
-      });
+      const response = await fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Không thể cập nhật trạng thái');
-      setDonHangAdmin((orders) => orders.map((order) => order.id === orderId ? data.order : order));
-    } catch (error) {
-      setLoiDonHang(error instanceof Error ? error.message : 'Không thể cập nhật trạng thái');
-    }
+      if (!response.ok) throw new Error(data.message);
+      setDashboard(data); setDashboardError('');
+    } catch {
+      setDashboardError('Không tải được thống kê.');
+    } finally { setDashboardLoading(false); }
   }
+
+  useEffect(() => {
+    taiDashboard();
+  }, [token, trang]);
 
   return (
     <SafeAreaView style={styles.page}>
@@ -139,6 +88,8 @@ export default function ManHinhAdmin({ tenAdmin, token, khiDangXuat }: ThuocTinh
               <MucMenu icon="⌂" label="Tổng quan" dangChon={trang === 'tongQuan'} khiNhan={() => setTrang('tongQuan')} />
               <MucMenu icon="♨" label="Quản lý món ăn" dangChon={trang === 'monAn'} khiNhan={() => setTrang('monAn')} />
               <MucMenu icon="♙" label="Quản lý người dùng" dangChon={trang === 'nguoiDung'} khiNhan={() => setTrang('nguoiDung')} />
+              <MucMenu icon="▦" label="Chỗ ngồi" dangChon={trang === 'tables'} khiNhan={() => setTrang('tables')} />
+              <MucMenu icon="₫" label="Bán tại quầy" dangChon={trang === 'counter'} khiNhan={() => setTrang('counter')} />
               <MucMenu icon="▤" label="Quản lý đơn hàng" dangChon={trang === 'donHang'} khiNhan={() => setTrang('donHang')} />
             </View>
             <Pressable style={styles.logoutSide} onPress={khiDangXuat}>
@@ -158,7 +109,7 @@ export default function ManHinhAdmin({ tenAdmin, token, khiDangXuat }: ThuocTinh
               <Text style={styles.bell}>♧</Text>
               <View style={styles.avatar}><Text style={styles.avatarText}>{chuCai}</Text></View>
               {!laManHinhNho && <Text style={styles.adminName}>{tenAdmin}</Text>}
-              <Text style={styles.chevron}>⌄</Text>
+<Action onPress={khiDangXuat}>Đăng xuất</Action>
             </View>
           </View>
 
@@ -167,15 +118,21 @@ export default function ManHinhAdmin({ tenAdmin, token, khiDangXuat }: ThuocTinh
               <MucMenu icon="⌂" label="Tổng quan" dangChon={trang === 'tongQuan'} khiNhan={() => setTrang('tongQuan')} />
               <MucMenu icon="♨" label="Món ăn" dangChon={trang === 'monAn'} khiNhan={() => setTrang('monAn')} />
               <MucMenu icon="♙" label="Người dùng" dangChon={trang === 'nguoiDung'} khiNhan={() => setTrang('nguoiDung')} />
+              <MucMenu icon="▦" label="Chỗ ngồi" dangChon={trang === 'tables'} khiNhan={() => setTrang('tables')} />
+              <MucMenu icon="₫" label="Bán tại quầy" dangChon={trang === 'counter'} khiNhan={() => setTrang('counter')} />
               <MucMenu icon="▤" label="Đơn hàng" dangChon={trang === 'donHang'} khiNhan={() => setTrang('donHang')} />
             </View>
           )}
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            {trang === 'tongQuan' && <TrangTongQuan tenAdmin={tenAdmin} laDesktop={laDesktop} laManHinhNho={laManHinhNho} />}
-            {trang === 'monAn' && <TrangQuanLyMonAn />}
-            {trang === 'nguoiDung' && <TrangQuanLyNguoiDung taiKhoan={taiKhoan} dangTai={dangTaiTaiKhoan} loi={loiTaiKhoan} />}
-            {trang === 'donHang' && <TrangQuanLyDonHang donHang={donHangAdmin} dangTai={dangTaiDonHang} loi={loiDonHang} khiCapNhat={capNhatTrangThai} />}
+            {trang === 'monAn' && <><Action onPress={khiTaiLaiMonAn}>Làm mới món ăn</Action>{dangTaiMon && <Text>Đang tải món…</Text>}{loiMonAn !== '' && <Text style={ui.error}>{loiMonAn}</Text>}</>}
+            {trang === 'tongQuan' && <><Action onPress={taiDashboard}>Làm mới thống kê</Action>{dashboardLoading && <Text>Đang tải thống kê…</Text>}{dashboardError !== '' && <Text style={ui.error}>{dashboardError}</Text>}</>}
+            {trang === 'tongQuan' && !dashboardLoading && !dashboardError && <TrangTongQuan tenAdmin={tenAdmin} laDesktop={laDesktop} laManHinhNho={laManHinhNho} danhSachMonAn={danhSachMonAn} dashboard={dashboard} />}
+            {trang === 'monAn' && <TrangQuanLyMonAn danhSachMonAn={danhSachMonAn} token={token} khiTaiLai={khiTaiLaiMonAn} khiTaiLaiDashboard={taiDashboard} />}
+            {trang === 'nguoiDung' && <AccountsPanel token={token} />}
+            {trang === 'donHang' && <OrdersPanel token={token} management onChanged={khiTaiLaiMonAn} />}
+            {trang === 'counter' && <CounterScreen token={token} />}
+            {trang === 'tables' && <TablesScreen token={token} management />}
           </ScrollView>
         </View>
       </View>
@@ -183,7 +140,16 @@ export default function ManHinhAdmin({ tenAdmin, token, khiDangXuat }: ThuocTinh
   );
 }
 
-function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho }: { tenAdmin: string; laDesktop: boolean; laManHinhNho: boolean }) {
+function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho, danhSachMonAn, dashboard }: { tenAdmin: string; laDesktop: boolean; laManHinhNho: boolean; danhSachMonAn: MonAn[]; dashboard: DashboardData }) {
+  const thongKe = [
+    { icon: '₫', label: 'Tiền mặt thu hôm nay', value: dinhDangGia(dashboard.todayRevenue), note: 'Chỉ đơn đã ghi nhận thanh toán', color: '#18A957', pale: '#EAF8EF' },
+    { icon: '♨', label: 'Tổng số món ăn', value: String(dashboard.totalFoods), note: 'Dữ liệu từ MySQL', color: '#FF5B16', pale: '#FFF0E9' },
+    { icon: '♙', label: 'Tổng người dùng', value: String(dashboard.totalUsers), note: 'Tài khoản User', color: '#1677FF', pale: '#EAF3FF' },
+    { icon: '▤', label: 'Đơn hàng hôm nay', value: String(dashboard.todayOrders), note: 'Theo lần tải gần nhất', color: '#18A957', pale: '#EAF8EF' },
+  ];
+  const monPhoBien = dashboard.popularFoods.map((food) => ({ ...food, local: danhSachMonAn.find((mon) => mon.ma === food.id) }));
+  const duLieuBieuDo = dashboard.ordersByDay;
+  const maxDonHang = Math.max(1, ...duLieuBieuDo.map((item) => item.total));
   return (
     <>
       <Text style={styles.title}>Tổng quan</Text>
@@ -208,16 +174,16 @@ function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho }: { tenAdmin: string
               <View style={[styles.panel, styles.popularPanel, !laDesktop && styles.fullWidth]}>
                 <View style={styles.panelHeader}>
                   <Text style={styles.panelTitle}>Món ăn phổ biến</Text>
-                  <Text style={styles.viewAll}>Xem tất cả →</Text>
+
                 </View>
-                {danhSachMonAn.slice(0, 4).map((mon, index) => (
-                  <View key={mon.ma} style={styles.foodRow}>
-                    <Image source={mon.hinhAnh} style={styles.foodImage} />
+                {monPhoBien.map((food) => (
+                  <View key={food.id} style={styles.foodRow}>
+                    {food.local && <Image source={food.local.hinhAnh} style={styles.foodImage} />}
                     <View style={styles.foodInfo}>
-                      <Text style={styles.foodName}>{mon.ten}</Text>
-                      <Text style={styles.foodPrice}>{dinhDangGia(mon.gia)}</Text>
+                      <Text style={styles.foodName}>{food.name}</Text>
+                      <Text style={styles.foodPrice}>{dinhDangGia(food.price)}</Text>
                     </View>
-                    <Text style={styles.sold}>Đã bán: {soLuongDaBan[index]}</Text>
+                    <Text style={styles.sold}>Đã bán: {food.sold_quantity}</Text>
                   </View>
                 ))}
               </View>
@@ -226,12 +192,12 @@ function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho }: { tenAdmin: string
                 <View style={styles.panel}>
                   <Text style={styles.panelTitlePadded}>Thống kê đơn hàng (7 ngày qua)</Text>
                   <View style={styles.chart}>
-                    {cotDonHang.map((soLuong, index) => (
-                      <View key={ngay[index]} style={styles.barColumn}>
+                    {duLieuBieuDo.map((item) => (
+                      <View key={item.order_date} style={styles.barColumn}>
                         <View style={styles.barTrack}>
-                          <View style={[styles.bar, { height: `${(soLuong / 40) * 100}%` }]} />
+                          <View style={[styles.bar, { height: `${(item.total / maxDonHang) * 100}%` }]} />
                         </View>
-                        <Text style={styles.barLabel}>{ngay[index]}</Text>
+                        <Text style={styles.barLabel}>{item.order_date}</Text>
                       </View>
                     ))}
                   </View>
@@ -240,7 +206,7 @@ function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho }: { tenAdmin: string
                 <View style={[styles.panel, styles.ordersPanel]}>
                   <View style={styles.panelHeader}>
                     <Text style={styles.panelTitle}>Đơn hàng gần đây</Text>
-                    <Text style={styles.viewAll}>Xem tất cả →</Text>
+
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={styles.table}>
@@ -251,15 +217,15 @@ function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho }: { tenAdmin: string
                         <Text style={[styles.tableCell, styles.statusCell]}>Trạng thái</Text>
                         <Text style={[styles.tableCell, styles.timeCell]}>Thời gian</Text>
                       </View>
-                      {donHangGanDay.map((don) => (
-                        <View key={don.ma} style={styles.tableRow}>
-                          <Text style={[styles.tableCell, styles.codeCell, styles.strong]}>{don.ma}</Text>
-                          <Text style={[styles.tableCell, styles.personCell]}>{don.ten}</Text>
-                          <Text style={styles.tableCell}>{don.tong}</Text>
+                      {dashboard.recentOrders.map((don) => (
+                        <View key={don.id} style={styles.tableRow}>
+                          <Text style={[styles.tableCell, styles.codeCell, styles.strong]}>#DH{don.id}</Text>
+                          <Text style={[styles.tableCell, styles.personCell]}>{don.customer_name}</Text>
+                          <Text style={styles.tableCell}>{dinhDangGia(don.total_amount)}</Text>
                           <View style={[styles.statusCell, styles.statusWrap]}>
-                            <Text style={[styles.status, { color: don.mau, backgroundColor: don.nen }]}>{don.trangThai}</Text>
+                            <Text style={styles.status}>{tenTrangThai[don.status] || don.status}</Text>
                           </View>
-                          <Text style={[styles.tableCell, styles.timeCell]}>{don.gio}</Text>
+                          <Text style={[styles.tableCell, styles.timeCell]}>{new Date(don.created_at).toLocaleString('vi-VN')}</Text>
                         </View>
                       ))}
                     </View>
@@ -271,21 +237,110 @@ function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho }: { tenAdmin: string
   );
 }
 
-function TrangQuanLyMonAn() {
+function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard }: { danhSachMonAn: MonAn[]; token: string; khiTaiLai: () => Promise<void>; khiTaiLaiDashboard: () => Promise<void> }) {
+  const danhMuc = ['Cơm', 'Mì', 'Đồ uống', 'Ăn vặt', 'Món khác'] as const;
+  const [editing, setEditing] = useState<MonAn | null>(null);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('Tất cả');
+  const [activeFilter, setActiveFilter] = useState('Tất cả');
+  const [active, setActive] = useState(true);
+  const [stockBusy, setStockBusy] = useState(false);
+  const [hienFormThem, setHienFormThem] = useState(false);
+  const [tenMon, setTenMon] = useState('');
+  const [loaiMon, setLoaiMon] = useState<(typeof danhMuc)[number]>('Cơm');
+  const [moTa, setMoTa] = useState('');
+  const [gia, setGia] = useState('');
+  const [soLuong, setSoLuong] = useState('');
+  const [maHinhAnh, setMaHinhAnh] = useState<MaHinhAnh>('com-ga');
+  const [dangThem, setDangThem] = useState(false);
+  const [loiThemMon, setLoiThemMon] = useState('');
+
+  function dongFormThem() {
+    if (!dangThem) setHienFormThem(false);
+  }
+
+  async function themMonAn() {
+    const price = Number(gia);
+    const stockQuantity = Number(soLuong);
+    if (!tenMon.trim() || !moTa.trim()) {
+      setLoiThemMon('Vui lòng nhập tên món và mô tả.');
+      return;
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      setLoiThemMon('Giá món ăn phải lớn hơn 0.');
+      return;
+    }
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      setLoiThemMon('Số lượng phải là số nguyên không âm.');
+      return;
+    }
+
+    const apiUrl = buildApiUrl(editing ? `/api/admin/foods/${editing.ma}` : '/api/admin/foods');
+    try {
+      setDangThem(true);
+      setLoiThemMon('');
+      const response = await fetch(apiUrl, {
+        method: editing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: tenMon.trim(), category: loaiMon, description: moTa.trim(),
+          price, stock_quantity: stockQuantity, image_key: maHinhAnh, is_active: active,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setLoiThemMon(data.message || 'Không thể thêm món ăn.');
+        return;
+      }
+      await khiTaiLai();
+      await khiTaiLaiDashboard();
+      setTenMon(''); setMoTa(''); setGia(''); setSoLuong('');
+      setLoaiMon('Cơm'); setMaHinhAnh('com-ga'); setHienFormThem(false);
+    } catch {
+      setLoiThemMon('Không thể kết nối đến server.');
+    } finally {
+      setDangThem(false);
+    }
+  }
+
+  async function thayDoiTonKho(mon: MonAn, delta: number) {
+    setStockBusy(true); setLoiThemMon('');
+    try {
+      await request(`/api/admin/foods/${mon.ma}/stock`, token, { method: 'PUT', body: JSON.stringify({ delta }) });
+      await khiTaiLai();
+    } catch (e) { setLoiThemMon(e instanceof Error ? e.message : 'Không thể cập nhật tồn kho.'); }
+    finally { setStockBusy(false); }
+  }
+  function edit(mon: MonAn) {
+    setEditing(mon); setTenMon(mon.ten); setMoTa(mon.moTa); setGia(String(mon.gia));
+    setSoLuong(String(mon.soLuongTon)); setLoaiMon(mon.danhMuc); setMaHinhAnh(mon.maHinhAnh as MaHinhAnh);
+    setActive(mon.dangBan !== false); setLoiThemMon(''); setHienFormThem(true);
+  }
+  const visibleFoods = danhSachMonAn.filter(mon => mon.ten.toLowerCase().includes(search.toLowerCase())
+    && (categoryFilter === 'Tất cả' || mon.danhMuc === categoryFilter)
+    && (activeFilter === 'Tất cả' || (activeFilter === 'Đang bán' ? mon.dangBan !== false : mon.dangBan === false)));
+
+  function trangThaiTonKho(mon: MonAn) {
+    if (mon.dangBan === false) return 'Ngừng bán';
+    if (mon.soLuongTon === 0) return 'Hết hàng';
+    if (mon.soLuongTon < 5) return 'Cần thêm hàng';
+    return 'Còn hàng';
+  }
+
   return (
     <>
       <View style={styles.pageHeading}>
         <View>
           <Text style={styles.title}>Quản lý món ăn</Text>
-          <Text style={styles.welcome}>Thêm, sửa, xóa và quản lý danh sách món ăn</Text>
+          <Text style={styles.welcome}>Thêm, sửa, ngừng bán và quản lý tồn kho</Text>
         </View>
-        <Pressable style={styles.primaryButton}><Text style={styles.primaryButtonText}>＋ Thêm món ăn</Text></Pressable>
+        <Pressable style={styles.primaryButton} onPress={() => { setLoiThemMon(''); setEditing(null); setTenMon(''); setMoTa(''); setGia(''); setSoLuong('0'); setActive(true); setHienFormThem(true); }}><Text style={styles.primaryButtonText}>＋ Thêm món ăn</Text></Pressable>
       </View>
       <View style={[styles.panel, styles.managementPanel]}>
         <View style={styles.filters}>
-          <TextInput style={styles.searchInput} placeholder="Tìm kiếm món ăn..." placeholderTextColor="#8A96A6" />
-          <View style={styles.filterButton}><Text style={styles.filterText}>Tất cả danh mục⌄</Text></View>
-          <View style={styles.filterButton}><Text style={styles.filterText}>Trạng thái⌄</Text></View>
+          <TextInput value={search} onChangeText={setSearch} style={styles.searchInput} placeholder="Tìm kiếm món ăn..." placeholderTextColor="#8A96A6" />
+          <View style={ui.row}>{['Tất cả', ...danhMuc].map(value => <Action key={value} onPress={() => setCategoryFilter(value)}>{categoryFilter === value ? '✓ ' : ''}{value}</Action>)}</View>
+          <View style={ui.row}>{['Tất cả', 'Đang bán', 'Ngừng bán'].map(value => <Action key={value} onPress={() => setActiveFilter(value)}>{activeFilter === value ? '✓ ' : ''}{value}</Action>)}</View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={[styles.manageTable, styles.foodTable]}>
@@ -298,106 +353,65 @@ function TrangQuanLyMonAn() {
               <Text style={styles.manageCell}>Trạng thái</Text>
               <Text style={styles.manageCell}>Thao tác</Text>
             </View>
-            {danhSachMonAn.map((mon, index) => (
+            {visibleFoods.map((mon) => (
               <View key={mon.ma} style={styles.manageRow}>
                 <View style={[styles.manageCell, styles.imageCell]}><Image source={mon.hinhAnh} style={styles.manageImage} /></View>
                 <Text style={[styles.manageCell, styles.foodNameCell, styles.strong]}>{mon.ten}</Text>
                 <Text style={styles.manageCell}>{mon.danhMuc}</Text>
                 <Text style={styles.manageCell}>{dinhDangGia(mon.gia)}</Text>
-                <Text style={styles.manageCell}>{index === 2 ? 0 : 20 - index}</Text>
-                <View style={styles.manageCell}><Text style={[styles.availability, index === 2 && styles.outOfStock]}>{index === 2 ? 'Hết hàng' : 'Còn hàng'}</Text></View>
-                <View style={[styles.manageCell, styles.actions]}><Text style={styles.editAction}>✎</Text><Text style={styles.deleteAction}>▣</Text></View>
+                <Text style={[styles.manageCell, styles.stockNumber]}>{mon.soLuongTon}</Text>
+                <View style={styles.manageCell}><Text style={[styles.availability, mon.soLuongTon === 0 && styles.outOfStock, mon.soLuongTon > 0 && mon.soLuongTon < 5 && styles.lowStock]}>{trangThaiTonKho(mon)}</Text></View>
+                <View style={[styles.manageCell, styles.actions]}>
+                  <Action onPress={() => edit(mon)}>Sửa</Action>
+                  <Pressable disabled={stockBusy} style={styles.stockButton} onPress={() => thayDoiTonKho(mon, -1)}><Text style={styles.stockButtonText}>−</Text></Pressable>
+                  <Pressable disabled={stockBusy} style={styles.stockButton} onPress={() => thayDoiTonKho(mon, 1)}><Text style={styles.stockButtonText}>+</Text></Pressable>
+                </View>
               </View>
             ))}
           </View>
         </ScrollView>
-        <Text style={styles.tableFooter}>Hiển thị 1 - {danhSachMonAn.length} / {danhSachMonAn.length} món ăn</Text>
+        <Text style={styles.tableFooter}>Hiển thị {visibleFoods.length} / {danhSachMonAn.length} món ăn</Text>
       </View>
-    </>
-  );
-}
-
-function TrangQuanLyNguoiDung({ taiKhoan, dangTai, loi }: { taiKhoan: TaiKhoanAdmin[]; dangTai: boolean; loi: string }) {
-  return (
-    <>
-      <Text style={styles.title}>Quản lý người dùng</Text>
-      <Text style={styles.welcome}>Xem danh sách và quản lý tài khoản người dùng</Text>
-      <View style={[styles.panel, styles.managementPanel]}>
-        <View style={styles.filters}>
-          <TextInput style={[styles.searchInput, styles.searchWide]} placeholder="Tìm kiếm theo tên, email hoặc MSSV..." placeholderTextColor="#8A96A6" />
-          <View style={styles.filterButton}><Text style={styles.filterText}>Tất cả vai trò⌄</Text></View>
-        </View>
-        {dangTai && <Text style={styles.feedback}>Đang tải người dùng...</Text>}
-        {loi !== '' && <Text style={[styles.feedback, styles.errorText]}>{loi}</Text>}
-        {!dangTai && loi === '' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={[styles.manageTable, styles.userTable]}>
-              <View style={[styles.manageRow, styles.tableHeader]}>
-                <Text style={[styles.manageCell, styles.userNameCell]}>Họ tên</Text>
-                <Text style={styles.manageCell}>Mã SV</Text>
-                <Text style={[styles.manageCell, styles.emailCell]}>Email</Text>
-                <Text style={[styles.manageCell, styles.phoneCell]}>Số điện thoại</Text>
-                <Text style={styles.manageCell}>Vai trò</Text>
-                <Text style={styles.manageCell}>Trạng thái</Text>
-                <Text style={styles.manageCell}>Thao tác</Text>
+      {!hienFormThem && loiThemMon !== '' && <Text style={ui.error}>{loiThemMon}</Text>}
+      <Modal visible={hienFormThem} transparent animationType="fade" onRequestClose={dongFormThem}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.foodFormModal}>
+            <View style={styles.formHeader}>
+              <View><Text style={styles.formTitle}>{editing ? 'Sửa món ăn' : 'Thêm món ăn'}</Text><Text style={styles.formSubtitle}>Thông tin được lưu sau khi máy chủ xác nhận.</Text></View>
+              <Pressable onPress={dongFormThem}><Text style={styles.closeButton}>×</Text></Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.foodFormBody}>
+              <Text style={styles.fieldLabel}>Ảnh món ăn</Text>
+              <View style={styles.imageChoices}>
+                {danhSachHinhAnh.map((anh) => (
+                  <Pressable key={anh.ma} style={[styles.imageChoice, maHinhAnh === anh.ma && styles.imageChoiceActive]} onPress={() => setMaHinhAnh(anh.ma)}>
+                    <Image source={layHinhAnhMonAn(anh.ma)} style={styles.imageChoicePhoto} />
+                    <Text style={styles.imageChoiceText}>{anh.ten}</Text>
+                  </Pressable>
+                ))}
               </View>
-              {taiKhoan.map((user) => (
-                <View key={user.id} style={styles.manageRow}>
-                  <Text style={[styles.manageCell, styles.userNameCell, styles.strong]}>{user.full_name}</Text>
-                  <Text style={styles.manageCell}>{user.student_code || '-'}</Text>
-                  <Text style={[styles.manageCell, styles.emailCell]}>{user.email}</Text>
-                  <Text style={[styles.manageCell, styles.phoneCell]}>{user.phone || 'Chưa cập nhật'}</Text>
-                  <View style={styles.manageCell}><Text style={[styles.roleBadge, user.role === 'admin' && styles.adminBadge]}>{user.role === 'admin' ? 'Admin' : 'User'}</Text></View>
-                  <View style={styles.manageCell}><Text style={styles.availability}>Hoạt động</Text></View>
-                  <View style={[styles.manageCell, styles.actions]}><Text style={styles.editBlueAction}>✎</Text><Text style={styles.deleteAction}>▣</Text></View>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        )}
-        {!dangTai && loi === '' && <Text style={styles.tableFooter}>Hiển thị {taiKhoan.length} người dùng</Text>}
-      </View>
-    </>
-  );
-}
-
-function TrangQuanLyDonHang({ donHang, dangTai, loi, khiCapNhat }: { donHang: DonHangAdmin[]; dangTai: boolean; loi: string; khiCapNhat: (id: number, status: string) => void }) {
-  return (
-    <>
-      <Text style={styles.title}>Quản lý đơn hàng</Text>
-      <Text style={styles.welcome}>Xem thông tin giao hàng và các món khách đã đặt</Text>
-      <View style={[styles.panel, styles.managementPanel]}>
-        {dangTai && <Text style={styles.feedback}>Đang tải đơn hàng...</Text>}
-        {loi !== '' && <Text style={[styles.feedback, styles.errorText]}>{loi}</Text>}
-        {!dangTai && loi === '' && donHang.length === 0 && <Text style={styles.feedback}>Chưa có đơn hàng.</Text>}
-        {!dangTai && loi === '' && donHang.map((order) => (
-          <View key={order.id} style={styles.orderAdminCard}>
-            <View style={styles.orderAdminHeader}>
-              <View><Text style={styles.orderAdminId}>Đơn #{order.id}</Text><Text style={styles.orderCustomer}>{order.customer_name}</Text></View>
-              <View style={styles.orderHeaderRight}><Text style={styles.availability}>{tenTrangThai[order.status] || order.status}</Text><Text style={styles.orderDate}>{new Date(order.created_at).toLocaleString('vi-VN')}</Text></View>
-            </View>
-            <View style={styles.orderDelivery}>
-              <Text style={styles.deliveryLine}>SĐT nhận hàng: {order.phone}</Text>
-              <Text style={styles.deliveryLine}>Địa chỉ: {order.delivery_address}</Text>
-              {order.note && <Text style={styles.deliveryLine}>Ghi chú: {order.note}</Text>}
-            </View>
-            {order.items.map((item) => (
-              <View key={item.id} style={styles.orderItemLine}>
-                <Text style={styles.orderItemName}>{item.food_name} × {item.quantity}</Text>
-                <Text style={styles.orderItemPrice}>{dinhDangGia(Number(item.price) * item.quantity)}</Text>
+              <Text style={styles.fieldLabel}>Tên món ăn *</Text>
+              <TextInput style={styles.formInput} value={tenMon} onChangeText={setTenMon} placeholder="Nhập tên món ăn" />
+              <Text style={styles.fieldLabel}>Danh mục *</Text>
+              <View style={styles.categoryChoices}>
+                {danhMuc.map((loai) => <Pressable key={loai} style={[styles.categoryChoice, loaiMon === loai && styles.categoryChoiceActive]} onPress={() => setLoaiMon(loai)}><Text style={[styles.categoryChoiceText, loaiMon === loai && styles.categoryChoiceTextActive]}>{loai}</Text></Pressable>)}
               </View>
-            ))}
-            <View style={styles.orderAdminTotal}><Text style={styles.strong}>Tổng tiền</Text><Text style={styles.foodPrice}>{dinhDangGia(Number(order.total_amount))}</Text></View>
-            <View style={styles.statusActions}>
-              {['pending', 'confirmed', 'delivering', 'completed', 'cancelled'].map((status) => (
-                <Pressable key={status} style={[styles.statusButton, order.status === status && styles.statusButtonActive]} onPress={() => khiCapNhat(order.id, status)}>
-                  <Text style={[styles.statusButtonText, order.status === status && styles.statusButtonTextActive]}>{tenTrangThai[status]}</Text>
-                </Pressable>
-              ))}
+              <Text style={styles.fieldLabel}>Mô tả *</Text>
+              <TextInput style={[styles.formInput, styles.descriptionInput]} value={moTa} onChangeText={setMoTa} placeholder="Nhập mô tả món ăn" multiline />
+              <View style={styles.twoFields}>
+                <View style={styles.halfField}><Text style={styles.fieldLabel}>Giá (VNĐ) *</Text><TextInput style={styles.formInput} value={gia} onChangeText={setGia} keyboardType="numeric" placeholder="30000" /></View>
+                {!editing && <View style={styles.halfField}><Text style={styles.fieldLabel}>Số lượng *</Text><TextInput style={styles.formInput} value={soLuong} onChangeText={setSoLuong} keyboardType="numeric" placeholder="10" /></View>}
+              </View>
+              {editing && <Action onPress={() => setActive(!active)}>{active ? 'Đang bán' : 'Ngừng bán'} — nhấn để đổi</Action>}
+              {loiThemMon !== '' && <Text style={styles.formError}>{loiThemMon}</Text>}
+            </ScrollView>
+            <View style={styles.formActions}>
+              <Pressable style={styles.cancelButton} onPress={dongFormThem}><Text style={styles.cancelButtonText}>Hủy</Text></Pressable>
+              <Pressable style={[styles.primaryButton, dangThem && styles.disabledButton]} disabled={dangThem} onPress={themMonAn}><Text style={styles.primaryButtonText}>{dangThem ? 'Đang lưu...' : 'Lưu món ăn'}</Text></Pressable>
             </View>
           </View>
-        ))}
-      </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -407,7 +421,7 @@ function Logo({ gon = false }: { gon?: boolean }) {
     <View style={[styles.logoWrap, gon && styles.logoCompact]}>
       <View style={styles.logoIcon}><Text style={styles.logoIconText}>♨</Text></View>
       <View>
-        <Text style={styles.logoText}>SMART <Text style={styles.orange}>CANTEEN</Text></Text>
+        <Text style={styles.logoText}>APP <Text style={styles.orange}>CANTEEN</Text></Text>
         {!gon && <Text style={styles.logoSub}>ADMIN</Text>}
       </View>
     </View>
@@ -453,7 +467,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   adminName: { maxWidth: 150, color: '#2A3441', fontSize: 14, fontWeight: '600' },
   chevron: { color: '#42536A', fontSize: 18 },
-  mobileNav: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 10, paddingVertical: 8, gap: 5, borderBottomWidth: 1, borderBottomColor: '#E4E9EF', backgroundColor: '#FFFFFF' },
+  mobileNav: { flexWrap: 'wrap', flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 10, paddingVertical: 8, gap: 5, borderBottomWidth: 1, borderBottomColor: '#E4E9EF', backgroundColor: '#FFFFFF' },
   content: { width: '100%', maxWidth: 1280, alignSelf: 'center', padding: 22, paddingBottom: 40 },
   title: { color: '#10151D', fontSize: 27, fontWeight: '900' },
   welcome: { marginTop: 5, marginBottom: 20, color: '#59677A', fontSize: 14 },
@@ -521,13 +535,44 @@ const styles = StyleSheet.create({
   manageImage: { width: 45, height: 45, borderRadius: 8 },
   availability: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 5, backgroundColor: '#DDF7E6', color: '#148B42', fontSize: 9, fontWeight: '700' },
   outOfStock: { backgroundColor: '#FFE7E7', color: '#E03535' },
+  lowStock: { backgroundColor: '#FFF4D9', color: '#D97706' },
+  stockNumber: { fontWeight: '800' },
+  stockButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 6, backgroundColor: '#FFF0E9' },
+  stockButtonText: { color: '#F15F24', fontSize: 16, fontWeight: '800' },
   roleBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 5, backgroundColor: '#E5F0FF', color: '#1677FF', fontSize: 9, fontWeight: '700' },
   adminBadge: { backgroundColor: '#FFF0E5', color: '#FF5A12' },
-  actions: { flexDirection: 'row', gap: 7 },
+  actions: { minWidth: 145, flexDirection: 'row', gap: 7 },
   editAction: { overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 7, borderRadius: 6, backgroundColor: '#FFF0DF', color: '#FF5A12', fontSize: 14 },
   editBlueAction: { overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 7, borderRadius: 6, backgroundColor: '#1677FF', color: '#FFFFFF', fontSize: 14 },
   deleteAction: { overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 7, borderRadius: 6, backgroundColor: '#FFE7E9', color: '#E63946', fontSize: 13 },
   tableFooter: { padding: 15, color: '#69778A', fontSize: 11 },
+  modalBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18, backgroundColor: 'rgba(15, 23, 42, 0.45)' },
+  foodFormModal: { width: '100%', maxWidth: 680, maxHeight: '92%', overflow: 'hidden', borderRadius: 14, backgroundColor: '#FFFFFF', shadowColor: '#111827', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 10 },
+  formHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 22, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#E8EDF2' },
+  formTitle: { color: '#151B24', fontSize: 20, fontWeight: '900' },
+  formSubtitle: { marginTop: 4, color: '#718096', fontSize: 12 },
+  closeButton: { color: '#64748B', fontSize: 28, lineHeight: 28 },
+  foodFormBody: { padding: 22 },
+  fieldLabel: { marginTop: 13, marginBottom: 7, color: '#344154', fontSize: 12, fontWeight: '700' },
+  formInput: { height: 44, paddingHorizontal: 13, borderWidth: 1, borderColor: '#DCE3EB', borderRadius: 8, backgroundColor: '#FAFBFC', color: '#1F2937', fontSize: 13 },
+  descriptionInput: { height: 78, paddingTop: 12, textAlignVertical: 'top' },
+  imageChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  imageChoice: { width: 76, padding: 5, borderWidth: 2, borderColor: 'transparent', borderRadius: 9, backgroundColor: '#F4F7FA' },
+  imageChoiceActive: { borderColor: '#FF5A12', backgroundColor: '#FFF3ED' },
+  imageChoicePhoto: { width: '100%', height: 48, borderRadius: 6 },
+  imageChoiceText: { marginTop: 4, color: '#526174', fontSize: 9, textAlign: 'center' },
+  categoryChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoryChoice: { paddingHorizontal: 13, paddingVertical: 8, borderWidth: 1, borderColor: '#DCE3EB', borderRadius: 18, backgroundColor: '#FFFFFF' },
+  categoryChoiceActive: { borderColor: '#FF5A12', backgroundColor: '#FFF0E9' },
+  categoryChoiceText: { color: '#526174', fontSize: 11, fontWeight: '600' },
+  categoryChoiceTextActive: { color: '#E94F0C' },
+  twoFields: { flexDirection: 'row', gap: 12 },
+  halfField: { flex: 1 },
+  formError: { marginTop: 14, color: '#D73A49', fontSize: 12 },
+  formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 22, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#E8EDF2', backgroundColor: '#FAFBFC' },
+  cancelButton: { paddingHorizontal: 20, paddingVertical: 12, borderWidth: 1, borderColor: '#DCE3EB', borderRadius: 8, backgroundColor: '#FFFFFF' },
+  cancelButtonText: { color: '#526174', fontSize: 13, fontWeight: '700' },
+  disabledButton: { opacity: 0.55 },
   feedback: { padding: 24, color: '#64748B', fontSize: 13, textAlign: 'center' },
   errorText: { color: '#D73A49' },
   orderAdminCard: { padding: 18, borderBottomWidth: 1, borderBottomColor: '#E8EDF2' },

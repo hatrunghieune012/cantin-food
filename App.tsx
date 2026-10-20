@@ -1,3 +1,6 @@
+import StaffScreen from './src/screens/StaffScreen';
+import TablesScreen from './src/screens/TablesScreen';
+import { apiUrl as buildApiUrl } from './src/api';
 import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -9,6 +12,7 @@ import ManHinhChiTietMon from './src/screens/FoodDetailScreen';
 import ManHinhGioHang from './src/screens/CartScreen';
 import ManHinhCaNhan from './src/screens/ProfileScreen';
 import ManHinhAdmin from './src/screens/AdminScreen';
+import { layHinhAnhMonAn } from './src/data/foods';
 import type { DonHang, MonAn, MonTrongGioHang, NguoiDung, TenManHinh } from './src/types';
 
 const KHOA_PHIEN_DANG_NHAP = 'smart-canteen-user';
@@ -39,6 +43,7 @@ function luuNguoiDung(nguoiDung: NguoiDung | null) {
         maSinhVien: nguoiDung.maSinhVien,
         email: nguoiDung.email,
         phone: nguoiDung.phone,
+        defaultAddress: nguoiDung.defaultAddress,
         role: nguoiDung.role,
         token: nguoiDung.token,
       };
@@ -57,10 +62,13 @@ export default function UngDung() {
   const [phienDangNhapBanDau] = useState<NguoiDung | null>(() => layNguoiDungDaLuu());
   const [manHinh, setManHinh] = useState<TenManHinh>(() => {
     if (!phienDangNhapBanDau) return 'dangNhap';
-    return phienDangNhapBanDau.role === 'admin' ? 'admin' : 'trangChu';
+    return phienDangNhapBanDau.role === 'admin' ? 'admin' : phienDangNhapBanDau.role === 'staff' ? 'staff' : 'trangChu';
   });
   const [nguoiDung, setNguoiDung] = useState<NguoiDung[]>([]);
   const [monDangChon, setMonDangChon] = useState<MonAn | null>(null);
+  const [danhSachMonAn, setDanhSachMonAn] = useState<MonAn[]>([]);
+  const [loiMonAn, setLoiMonAn] = useState('');
+  const [dangTaiMon, setDangTaiMon] = useState(false);
   const [gioHang, setGioHang] = useState<MonTrongGioHang[]>([]);
   const [donHang, setDonHang] = useState<DonHang[]>([]);
   const [nguoiDungHienTai, setNguoiDungHienTai] = useState<NguoiDung | null>(phienDangNhapBanDau);
@@ -75,8 +83,53 @@ export default function UngDung() {
   }, [nguoiDungHienTai]);
 
   useEffect(() => {
+    if (!nguoiDungHienTai?.token) return;
+    const apiUrl = buildApiUrl('/api/me');
+    fetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
+      .then((response) => {
+        if (response.status !== 401) return;
+        luuNguoiDung(null);
+        setNguoiDungHienTai(null);
+        setGioHang([]);
+        setDonHang([]);
+        setManHinh('dangNhap');
+        if (Platform.OS === 'web' && typeof window !== 'undefined') window.history.replaceState({}, '', '/');
+      })
+      .catch(() => undefined);
+  }, [nguoiDungHienTai?.token]);
+
+  async function taiDanhSachMonAn() {
+    setDangTaiMon(true);
+    const apiUrl = buildApiUrl(nguoiDungHienTai?.role === 'admin' ? '/api/admin/foods' : '/api/foods');
+    try {
+      const response = await fetch(apiUrl, { headers: nguoiDungHienTai ? { Authorization: `Bearer ${nguoiDungHienTai.token}` } : {} });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.foods)) throw new Error(data.message || 'Không thể tải món ăn');
+      setLoiMonAn('');
+      setDanhSachMonAn(data.foods.map((food: any) => {
+        return {
+          ma: food.id,
+          ten: food.name,
+          gia: Number(food.price),
+          moTa: food.description,
+          danhMuc: food.category,
+          hinhAnh: layHinhAnhMonAn(food.image_key),
+          soLuongTon: food.stock_quantity,
+          conMon: Boolean(food.is_active) && food.stock_quantity > 0,
+          dangBan: Boolean(food.is_active),
+          maHinhAnh: food.image_key,
+        } as MonAn;
+      }));
+    } catch {
+      setLoiMonAn('Không thể tải thực đơn. Vui lòng thử lại.');
+    } finally { setDangTaiMon(false); }
+  }
+
+  useEffect(() => { taiDanhSachMonAn(); }, [nguoiDungHienTai?.role, nguoiDungHienTai?.token, manHinh]);
+
+  useEffect(() => {
     if (!nguoiDungHienTai || nguoiDungHienTai.role !== 'user') return;
-    const apiUrl = Platform.OS === 'web' ? 'http://localhost:3000/api/orders' : 'http://10.21.61.245:3000/api/orders';
+    const apiUrl = buildApiUrl('/api/orders');
     fetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
       .then(async (response) => {
         if (!response.ok) return;
@@ -99,7 +152,7 @@ export default function UngDung() {
   function dangXuat() {
     const token = nguoiDungHienTai?.token;
     if (token) {
-      const apiUrl = Platform.OS === 'web' ? 'http://localhost:3000/api/logout' : 'http://10.21.61.245:3000/api/logout';
+      const apiUrl = buildApiUrl('/api/logout');
       fetch(apiUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
     }
     luuNguoiDung(null);
@@ -116,11 +169,22 @@ export default function UngDung() {
     setManHinh('chiTiet');
   }
 
+  function themMonVaoGio(monAn: MonAn) {
+    if (!monAn.conMon || monAn.dangBan === false || monAn.soLuongTon <= 0) return;
+    setGioHang((hienTai) => {
+      const daCo = hienTai.find((mon) => mon.ma === monAn.ma);
+      if ((daCo?.soLuong || 0) >= monAn.soLuongTon) return hienTai;
+      return daCo
+        ? hienTai.map((mon) => mon.ma === monAn.ma ? { ...monAn, soLuong: mon.soLuong + 1 } : mon)
+        : [...hienTai, { ...monAn, soLuong: 1 }];
+    });
+  }
+
   if (manHinh === 'dangNhap') {
     return <><StatusBar style="dark" /><ManHinhDangNhap khiDangNhap={(taiKhoan) => {
       luuNguoiDung(taiKhoan);
       setNguoiDungHienTai(taiKhoan);
-      const manHinhSauDangNhap = taiKhoan.role === 'admin' ? 'admin' : 'trangChu';
+      const manHinhSauDangNhap = taiKhoan.role === 'admin' ? 'admin' : taiKhoan.role === 'staff' ? 'staff' : 'trangChu';
       setManHinh(manHinhSauDangNhap);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.history.replaceState({}, '', taiKhoan.role === 'admin' ? '/admin' : '/');
@@ -132,6 +196,8 @@ export default function UngDung() {
     return <><StatusBar style="dark" /><ManHinhDangKy khiDangKy={(taiKhoan) => { setNguoiDung([...nguoiDung, taiKhoan]); setManHinh('dangNhap'); }} khiQuayLai={() => setManHinh('dangNhap')} /></>;
   }
 
+  if (manHinh === 'staff' && nguoiDungHienTai?.role === 'staff') return <StaffScreen token={nguoiDungHienTai.token} name={nguoiDungHienTai.hoTen} onLogout={dangXuat} />;
+
   // Route Admin chỉ hiển thị khi phiên đăng nhập thực sự có role admin.
   if (manHinh === 'admin') {
     if (!nguoiDungHienTai || nguoiDungHienTai.role !== 'admin') {
@@ -140,7 +206,7 @@ export default function UngDung() {
       return null;
     }
 
-    return <><StatusBar style="dark" /><ManHinhAdmin tenAdmin={nguoiDungHienTai.hoTen} token={nguoiDungHienTai.token} khiDangXuat={dangXuat} /></>;
+    return <><StatusBar style="dark" /><ManHinhAdmin tenAdmin={nguoiDungHienTai.hoTen} token={nguoiDungHienTai.token} danhSachMonAn={danhSachMonAn} khiTaiLaiMonAn={taiDanhSachMonAn} khiDangXuat={dangXuat} loiMonAn={loiMonAn} dangTaiMon={dangTaiMon} /></>;
   }
 
   const ten = nguoiDungHienTai?.hoTen || 'Sinh viên';
@@ -152,13 +218,14 @@ export default function UngDung() {
       <View style={styles.header}>
         <View style={styles.headerInner}>
           <Pressable style={styles.brand} onPress={() => setManHinh('trangChu')}>
-            <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
-            <Text style={styles.brandText}>SMART <Text style={styles.orange}>CANTEEN</Text></Text>
+            <View style={styles.logo}><Text style={styles.logoText}>AC</Text></View>
+            <Text style={styles.brandText}>APP <Text style={styles.orange}>CANTEEN</Text></Text>
           </Pressable>
 
           {laDesktop && (
             <View style={styles.desktopNav}>
               <NutDieuHuong icon="⌂" label="Trang chủ" dangChon={manHinh === 'trangChu'} khiNhan={() => setManHinh('trangChu')} />
+              <NutDieuHuong icon="▦" label="Chỗ ngồi" dangChon={manHinh === 'choNgoi'} khiNhan={() => setManHinh('choNgoi')} />
               <NutDieuHuong icon="♨" label="Thực đơn" dangChon={manHinh === 'thucDon' || manHinh === 'chiTiet'} khiNhan={() => setManHinh('thucDon')} />
               <NutDieuHuong icon="🛒" label="Giỏ hàng" dangChon={manHinh === 'gioHang'} khiNhan={() => setManHinh('gioHang')} soLuong={gioHang.reduce((tong, mon) => tong + mon.soLuong, 0)} />
             </View>
@@ -182,16 +249,20 @@ export default function UngDung() {
       )}
 
       <View style={styles.content}>
-        {manHinh === 'trangChu' && <ManHinhTrangChu nguoiDungHienTai={nguoiDungHienTai} khiChonMon={chonMon} khiXemThucDon={() => setManHinh('thucDon')} />}
-        {manHinh === 'thucDon' && <ManHinhThucDon khiChonMon={chonMon} gioHang={gioHang} setGioHang={setGioHang} />}
+        {dangTaiMon && <Text style={{ padding: 10 }}>Đang tải thực đơn…</Text>}
+        {loiMonAn !== '' && <Pressable onPress={taiDanhSachMonAn}><Text style={{ padding: 10, color: '#B42318' }}>{loiMonAn} Nhấn để tải lại.</Text></Pressable>}
+        {manHinh === 'choNgoi' && nguoiDungHienTai && <TablesScreen token={nguoiDungHienTai.token} />}
+        {manHinh === 'trangChu' && <ManHinhTrangChu nguoiDungHienTai={nguoiDungHienTai} danhSachMonAn={danhSachMonAn} khiChonMon={chonMon} khiXemThucDon={() => setManHinh('thucDon')} gioHang={gioHang} khiThemVaoGio={themMonVaoGio} />}
+        {manHinh === 'thucDon' && <ManHinhThucDon danhSachMonAn={danhSachMonAn} khiChonMon={chonMon} gioHang={gioHang} khiThemVaoGio={themMonVaoGio} />}
         {manHinh === 'chiTiet' && <ManHinhChiTietMon monAn={monDangChon} gioHang={gioHang} setGioHang={setGioHang} khiQuayLai={() => setManHinh('thucDon')} khiXemGioHang={() => setManHinh('gioHang')} />}
-        {manHinh === 'gioHang' && <ManHinhGioHang gioHang={gioHang} setGioHang={setGioHang} nguoiDungHienTai={nguoiDungHienTai} themDonHang={(donMoi) => setDonHang([donMoi, ...donHang])} khiVeTrangChu={() => setManHinh('thucDon')} />}
-        {manHinh === 'caNhan' && <ManHinhCaNhan nguoiDungHienTai={nguoiDungHienTai} donHang={donHang} khiDangXuat={dangXuat} />}
+        {manHinh === 'gioHang' && <ManHinhGioHang gioHang={gioHang} setGioHang={setGioHang} nguoiDungHienTai={nguoiDungHienTai} themDonHang={(donMoi) => setDonHang([donMoi, ...donHang])} khiDatHangThanhCong={taiDanhSachMonAn} khiVeTrangChu={() => setManHinh('thucDon')} />}
+        {manHinh === 'caNhan' && <ManHinhCaNhan nguoiDungHienTai={nguoiDungHienTai} donHang={donHang} khiCapNhatNguoiDung={(nguoiDungMoi) => { luuNguoiDung(nguoiDungMoi); setNguoiDungHienTai(nguoiDungMoi); }} khiDangXuat={dangXuat} />}
       </View>
 
       {!laDesktop && (
         <View style={styles.mobileNav}>
           <NutDieuHuong icon="⌂" label="Trang chủ" dangChon={manHinh === 'trangChu'} khiNhan={() => setManHinh('trangChu')} mobile />
+          <NutDieuHuong icon="▦" label="Chỗ ngồi" dangChon={manHinh === 'choNgoi'} khiNhan={() => setManHinh('choNgoi')} mobile />
           <NutDieuHuong icon="♨" label="Thực đơn" dangChon={manHinh === 'thucDon' || manHinh === 'chiTiet'} khiNhan={() => setManHinh('thucDon')} mobile />
           <NutDieuHuong icon="🛒" label="Giỏ hàng" dangChon={manHinh === 'gioHang'} khiNhan={() => setManHinh('gioHang')} soLuong={gioHang.reduce((tong, mon) => tong + mon.soLuong, 0)} mobile />
         </View>

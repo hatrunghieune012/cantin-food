@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react';
 import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import TheMonAn from '../components/FoodCard';
-import { danhSachMonAn } from '../data/foods';
-import type { MonAn, NguoiDung } from '../types';
+import type { MonAn, MonTrongGioHang, NguoiDung } from '../types';
 
 interface ThuocTinhTrangChu {
   nguoiDungHienTai: NguoiDung | null;
+  danhSachMonAn: MonAn[];
   khiChonMon: (monAn: MonAn) => void;
   khiXemThucDon: () => void;
+  gioHang: MonTrongGioHang[];
+  khiThemVaoGio: (monAn: MonAn) => void;
 }
 
 const danhMuc = ['Tất cả', 'Cơm', 'Mì', 'Đồ uống', 'Ăn vặt', 'Món khác'] as const;
 
-export default function ManHinhTrangChu({ nguoiDungHienTai, khiChonMon, khiXemThucDon }: ThuocTinhTrangChu) {
+export default function ManHinhTrangChu({ nguoiDungHienTai, danhSachMonAn, khiChonMon, khiXemThucDon, gioHang, khiThemVaoGio }: ThuocTinhTrangChu) {
   const { width } = useWindowDimensions();
   const [tuKhoa, setTuKhoa] = useState('');
   const [mucDangChon, setMucDangChon] = useState<(typeof danhMuc)[number]>('Tất cả');
@@ -22,7 +24,7 @@ export default function ManHinhTrangChu({ nguoiDungHienTai, khiChonMon, khiXemTh
   const monHienThi = useMemo(() => danhSachMonAn.filter((mon) => {
     const dungDanhMuc = mucDangChon === 'Tất cả' || mon.danhMuc === mucDangChon;
     return dungDanhMuc && mon.ten.toLowerCase().includes(tuKhoa.trim().toLowerCase());
-  }), [mucDangChon, tuKhoa]);
+  }), [danhSachMonAn, mucDangChon, tuKhoa]);
 
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -64,7 +66,7 @@ export default function ManHinhTrangChu({ nguoiDungHienTai, khiChonMon, khiXemTh
         <Pressable onPress={khiXemThucDon}><Text style={styles.seeAll}>Xem tất cả  →</Text></Pressable>
       </View>
       <View style={styles.grid}>
-        {monHienThi.map((monAn) => <TheMonAn key={monAn.ma} monAn={monAn} khiNhan={() => khiChonMon(monAn)} />)}
+        {monHienThi.map((monAn) => <TheMonAn key={monAn.ma} monAn={monAn} khiNhan={() => khiChonMon(monAn)} khiThemVaoGio={() => khiThemVaoGio(monAn)} soLuongTrongGio={gioHang.find((mon) => mon.ma === monAn.ma)?.soLuong || 0} />)}
       </View>
       {monHienThi.length === 0 && <Text style={styles.empty}>Không tìm thấy món ăn phù hợp.</Text>}
     </ScrollView>

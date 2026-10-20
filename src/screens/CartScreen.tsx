@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { localTime, request, requestKey } from '../api';
+import { Action } from '../components/OperationsUI';
+import { apiUrl as buildApiUrl } from '../api';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { dinhDangGia } from '../data/foods';
 import type { DonHang, MonTrongGioHang, NguoiDung } from '../types';
@@ -8,26 +11,44 @@ interface ThuocTinhGioHang {
   setGioHang: (gioHangMoi: MonTrongGioHang[]) => void;
   nguoiDungHienTai: NguoiDung | null;
   themDonHang: (donHangMoi: DonHang) => void;
+  khiDatHangThanhCong: () => Promise<void>;
   khiVeTrangChu: () => void;
 }
 
-export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, themDonHang, khiVeTrangChu }: ThuocTinhGioHang) {
+export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, themDonHang, khiDatHangThanhCong, khiVeTrangChu }: ThuocTinhGioHang) {
   const [hienXacNhan, setHienXacNhan] = useState(false);
-  const [soDienThoai, setSoDienThoai] = useState(nguoiDungHienTai?.phone || '');
-  const [diaChi, setDiaChi] = useState('');
+  const [pickupAt, setPickupAt] = useState('');
+  const [slots, setSlots] = useState<string[]>([]);
+  const [slotLoading, setSlotLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const key = useRef(requestKey());
   const [ghiChu, setGhiChu] = useState('');
   const [thongBao, setThongBao] = useState('');
   const [dangDatHang, setDangDatHang] = useState(false);
 
+  async function loadSlots() {
+    if (!nguoiDungHienTai) return;
+    setSlotLoading(true);
+    try { const data = await request('/api/pickup-slots', nguoiDungHienTai.token); setSlots(data.slots); setThongBao(''); }
+    catch (e) { setThongBao(e instanceof Error ? e.message : 'Không tải được giờ nhận.'); }
+    finally { setSlotLoading(false); }
+  }
+  useEffect(() => { if (hienXacNhan) loadSlots(); }, [hienXacNhan]);
+  useEffect(() => { key.current = requestKey(); }, [gioHang, pickupAt, ghiChu]);
+
   function thayDoiSoLuong(ma: number, mucThayDoi: number) {
-    setGioHang(gioHang.map((mon) => mon.ma === ma ? { ...mon, soLuong: mon.soLuong + mucThayDoi } : mon).filter((mon) => mon.soLuong > 0));
+    if (dangDatHang) return;
+    setGioHang(gioHang.map((mon) => mon.ma === ma ? { ...mon, soLuong: Math.min(mon.soLuongTon, mon.soLuong + mucThayDoi) } : mon).filter((mon) => mon.soLuong > 0));
   }
 
   function xoaMon(ma: number) {
+    if (dangDatHang) return;
     setGioHang(gioHang.filter((mon) => mon.ma !== ma));
   }
 
   function xoaTatCa() {
+    if (dangDatHang) return;
+    if (Platform.OS === 'web') { if (window.confirm('Xóa toàn bộ giỏ hàng?')) setGioHang([]); return; }
     Alert.alert('Xác nhận', 'Bạn có chắc muốn xóa toàn bộ giỏ hàng không?', [
       { text: 'Hủy', style: 'cancel' },
       { text: 'Xóa', style: 'destructive', onPress: () => setGioHang([]) },
@@ -37,27 +58,15 @@ export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, 
   const tongTien = gioHang.reduce((tong, mon) => tong + mon.gia * mon.soLuong, 0);
 
   async function xacNhanDatHang() {
-    const phone = soDienThoai.trim();
-    const deliveryAddress = diaChi.trim();
-
-    if (!/^\+?[0-9]{8,15}$/.test(phone)) {
-      setThongBao('Số điện thoại nhận hàng không hợp lệ.');
-      return;
-    }
-
-    if (!deliveryAddress) {
-      setThongBao('Vui lòng nhập địa chỉ giao hàng.');
-      return;
-    }
+    if (dangDatHang) return;
+    if (!pickupAt) { setThongBao('Vui lòng chọn giờ nhận món.'); return; }
 
     if (!nguoiDungHienTai?.token) {
       setThongBao('Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.');
       return;
     }
 
-    const apiUrl = Platform.OS === 'web'
-      ? 'http://localhost:3000/api/orders'
-      : 'http://10.21.61.245:3000/api/orders';
+    const apiUrl = buildApiUrl('/api/orders');
 
     try {
       setDangDatHang(true);
@@ -69,8 +78,9 @@ export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, 
           Authorization: `Bearer ${nguoiDungHienTai.token}`,
         },
         body: JSON.stringify({
-          phone,
-          deliveryAddress,
+          orderType: 'online',
+          pickupAt,
+          requestKey: key.current,
           note: ghiChu.trim(),
           items: gioHang.map((mon) => ({
             foodId: mon.ma,
@@ -105,7 +115,8 @@ export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, 
 
       themDonHang(donHangMoi);
       setGioHang([]);
-      Alert.alert('Thành công', 'Đặt món thành công.');
+      await khiDatHangThanhCong();
+      setSuccess(`Đã đặt đơn #${data.order.id}. Nhận tại quầy lúc ${localTime(data.order.pickup_at)}. Thanh toán tiền mặt khi nhận món.`);
     } catch {
       setThongBao('Không thể kết nối đến server.');
     } finally {
@@ -116,6 +127,7 @@ export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, 
   if (gioHang.length === 0) {
     return (
       <View style={styles.empty}>
+        {success !== '' && <Text style={styles.message}>{success}</Text>}
         <Text style={styles.emptyIcon}>🛒</Text>
         <Text style={styles.emptyTitle}>Giỏ hàng đang trống</Text>
         <Text style={styles.emptyText}>Hãy chọn món ăn yêu thích của bạn.</Text>
@@ -168,12 +180,16 @@ export default function ManHinhGioHang({ gioHang, setGioHang, nguoiDungHienTai, 
             </View>
           ))}
           <View style={styles.confirmTotal}><Text style={styles.totalLabel}>Tổng tiền</Text><Text style={styles.total}>{dinhDangGia(tongTien)}</Text></View>
-          <Text style={styles.label}>Số điện thoại nhận hàng</Text>
-          <TextInput style={styles.input} value={soDienThoai} onChangeText={setSoDienThoai} keyboardType="phone-pad" placeholder="Nhập số điện thoại" />
-          <Text style={styles.label}>Địa chỉ giao hàng</Text>
-          <TextInput style={[styles.input, styles.addressInput]} value={diaChi} onChangeText={setDiaChi} placeholder="Nhập địa chỉ giao hàng" multiline />
+          <Text style={styles.label}>Chọn giờ nhận món tại quầy (giờ Việt Nam)</Text>
+          <Action onPress={loadSlots} disabled={slotLoading || dangDatHang}>Làm mới khung giờ</Action>
+          {slotLoading && <Text>Đang tải khung giờ…</Text>}
+          {!slotLoading && slots.length === 0 && <Text>Không có khung giờ nhận khả dụng.</Text>}
+          <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
+            {slots.map(slot => <Pressable key={slot} disabled={dangDatHang} onPress={() => setPickupAt(slot)} style={{ padding: 12, backgroundColor: pickupAt === slot ? '#FFE1D2' : '#F7F8FA', marginVertical: 3 }}><Text>{pickupAt === slot ? '✓ ' : ''}{localTime(slot)}</Text></Pressable>)}
+          </ScrollView>
+          <Text>Thanh toán tiền mặt khi nhận món.</Text>
           <Text style={styles.label}>Ghi chú (không bắt buộc)</Text>
-          <TextInput style={[styles.input, styles.addressInput]} value={ghiChu} onChangeText={setGhiChu} placeholder="Ví dụ: Không cay, giao tại cổng ký túc xá..." multiline maxLength={500} />
+          <TextInput style={[styles.input, styles.addressInput]} editable={!dangDatHang} value={ghiChu} onChangeText={setGhiChu} placeholder="Ví dụ: Không cay, không hành..." multiline maxLength={500} />
           {thongBao !== '' && <Text style={styles.message}>{thongBao}</Text>}
           <View style={styles.confirmActions}>
             <Pressable style={styles.backButton} onPress={() => setHienXacNhan(false)} disabled={dangDatHang}><Text style={styles.backButtonText}>Quay lại</Text></Pressable>

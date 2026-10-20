@@ -33,8 +33,10 @@ export default function ManHinhChiTietMon({
   }
 
   function themVaoGioHang() {
+    if (!monDangXem.conMon) return;
     const monDaCo = gioHang.find((mon) => mon.ma === monDangXem.ma);
 
+    if ((monDaCo?.soLuong || 0) + soLuong > monDangXem.soLuongTon) { Alert.alert('Không đủ món', 'Số lượng vượt tồn kho hiện tại.'); return; }
     if (monDaCo) {
       const gioHangMoi = gioHang.map((mon) => {
         if (mon.ma === monDangXem.ma) {
@@ -62,7 +64,7 @@ export default function ManHinhChiTietMon({
       <Text style={styles.name}>{monDangXem.ten}</Text>
       <Text style={styles.price}>{dinhDangGia(monDangXem.gia)}</Text>
       <Text style={styles.description}>{monDangXem.moTa}</Text>
-      <Text style={styles.available}>● Còn món</Text>
+      <Text style={[styles.available, !monDangXem.conMon && styles.unavailable]}>● {monDangXem.conMon ? 'Còn hàng' : 'Hết hàng'}</Text>
 
       <Text style={styles.label}>Số lượng</Text>
       <View style={styles.counter}>
@@ -72,7 +74,7 @@ export default function ManHinhChiTietMon({
 
         <Text style={styles.quantity}>{soLuong}</Text>
 
-        <Pressable style={styles.circle} onPress={() => setSoLuong(soLuong + 1)}>
+        <Pressable style={styles.circle} onPress={() => setSoLuong(Math.min(monDangXem.soLuongTon, soLuong + 1))}>
           <Text style={styles.symbol}>+</Text>
         </Pressable>
       </View>
@@ -82,8 +84,8 @@ export default function ManHinhChiTietMon({
         <Text style={styles.total}>{dinhDangGia(monDangXem.gia * soLuong)}</Text>
       </View>
 
-      <Pressable style={styles.button} onPress={themVaoGioHang}>
-        <Text style={styles.buttonText}>Thêm vào giỏ hàng</Text>
+      <Pressable style={[styles.button, !monDangXem.conMon && styles.buttonDisabled]} onPress={themVaoGioHang} disabled={!monDangXem.conMon}>
+        <Text style={styles.buttonText}>{monDangXem.conMon ? 'Thêm vào giỏ hàng' : 'Món ăn đã hết hàng'}</Text>
       </Pressable>
 
       <Pressable onPress={khiXemGioHang}>
@@ -100,6 +102,7 @@ const styles = StyleSheet.create({
   price: { marginTop: 7, color: '#E86A33', fontSize: 20, fontWeight: '700' },
   description: { marginTop: 16, color: '#656C76', fontSize: 15 },
   available: { marginTop: 16, color: '#2E9B68', fontWeight: '700' },
+  unavailable: { color: '#D73545' },
   label: { marginTop: 25, marginBottom: 10, fontWeight: '700' },
   counter: { flexDirection: 'row', alignItems: 'center' },
   circle: {
@@ -123,5 +126,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E86A33',
   },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  buttonDisabled: { backgroundColor: '#9CA3AF' },
   cartLink: { marginTop: 18, color: '#D85624', textAlign: 'center' },
 });

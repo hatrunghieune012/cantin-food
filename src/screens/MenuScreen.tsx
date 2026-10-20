@@ -1,33 +1,24 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import TheMonAn from '../components/FoodCard';
-import { danhSachMonAn } from '../data/foods';
 import type { MonAn, MonTrongGioHang } from '../types';
 
 interface ThuocTinhThucDon {
   khiChonMon: (monAn: MonAn) => void;
+  danhSachMonAn: MonAn[];
   gioHang: MonTrongGioHang[];
-  setGioHang: (gioHangMoi: MonTrongGioHang[]) => void;
+  khiThemVaoGio: (monAn: MonAn) => void;
 }
 const danhMuc = ['Tất cả', 'Cơm', 'Mì', 'Đồ uống', 'Ăn vặt', 'Món khác'] as const;
 
-export default function ManHinhThucDon({ khiChonMon, gioHang, setGioHang }: ThuocTinhThucDon) {
+export default function ManHinhThucDon({ khiChonMon, danhSachMonAn, gioHang, khiThemVaoGio }: ThuocTinhThucDon) {
   const [muc, setMuc] = useState<(typeof danhMuc)[number]>('Tất cả');
   const [tuKhoa, setTuKhoa] = useState('');
-  const monAn = useMemo(() => danhSachMonAn.filter((mon) => (muc === 'Tất cả' || mon.danhMuc === muc) && mon.ten.toLowerCase().includes(tuKhoa.toLowerCase().trim())), [muc, tuKhoa]);
-
-  function themVaoGio(mon: MonAn) {
-    const monDaCo = gioHang.find((item) => item.ma === mon.ma);
-    if (monDaCo) {
-      setGioHang(gioHang.map((item) => item.ma === mon.ma ? { ...item, soLuong: item.soLuong + 1 } : item));
-    } else {
-      setGioHang([...gioHang, { ...mon, soLuong: 1 }]);
-    }
-  }
+  const monAn = useMemo(() => danhSachMonAn.filter((mon) => (muc === 'Tất cả' || mon.danhMuc === muc) && mon.ten.toLowerCase().includes(tuKhoa.toLowerCase().trim())), [danhSachMonAn, muc, tuKhoa]);
 
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <Text style={styles.eyebrow}>SMART CANTEEN</Text>
+      <Text style={styles.eyebrow}>APP CANTEEN</Text>
       <Text style={styles.title}>Thực đơn hôm nay</Text>
       <Text style={styles.subtitle}>Chọn món ngon, đặt nhanh và nhận tại căng tin.</Text>
       <View style={styles.search}><Text style={styles.searchIcon}>⌕</Text><TextInput style={styles.input} value={tuKhoa} onChangeText={setTuKhoa} placeholder="Tìm trong thực đơn..." placeholderTextColor="#9AA0A9" /></View>
@@ -35,7 +26,7 @@ export default function ManHinhThucDon({ khiChonMon, gioHang, setGioHang }: Thuo
         {danhMuc.map((item) => <Pressable key={item} style={[styles.category, muc === item && styles.active]} onPress={() => setMuc(item)}><Text style={[styles.categoryText, muc === item && styles.activeText]}>{item}</Text></Pressable>)}
       </ScrollView>
       <Text style={styles.count}>{monAn.length} món đang phục vụ</Text>
-      <View style={styles.grid}>{monAn.map((mon) => <TheMonAn key={mon.ma} monAn={mon} khiNhan={() => khiChonMon(mon)} khiThemVaoGio={() => themVaoGio(mon)} />)}</View>
+      <View style={styles.grid}>{monAn.map((mon) => <TheMonAn key={mon.ma} monAn={mon} khiNhan={() => khiChonMon(mon)} khiThemVaoGio={() => khiThemVaoGio(mon)} soLuongTrongGio={gioHang.find((item) => item.ma === mon.ma)?.soLuong || 0} />)}</View>
       {monAn.length === 0 && <Text style={styles.empty}>Không tìm thấy món ăn phù hợp.</Text>}
     </ScrollView>
   );

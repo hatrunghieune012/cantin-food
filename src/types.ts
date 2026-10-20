@@ -1,6 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan' | 'admin';
+export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan' | 'admin' | 'staff' | 'choNgoi';
 
 export interface NguoiDung {
   id: number;
@@ -8,17 +8,21 @@ export interface NguoiDung {
   maSinhVien: string;
   email: string;
   phone: string;
-  role: 'user' | 'admin';
+  defaultAddress: string;
+  role: 'user' | 'staff' | 'admin';
   token: string;
 }
 
 export interface MonAn {
+  dangBan?: boolean;
+  maHinhAnh?: string;
   ma: number;
   ten: string;
   gia: number;
   hinhAnh: ImageSourcePropType;
   moTa: string;
   conMon: boolean;
+  soLuongTon: number;
   danhMuc: 'Cơm' | 'Mì' | 'Đồ uống' | 'Ăn vặt' | 'Món khác';
 }
 

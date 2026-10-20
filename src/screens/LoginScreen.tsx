@@ -1,3 +1,4 @@
+import { apiUrl as buildApiUrl } from '../api';
 import { useState } from 'react';
 import {
   ImageBackground,
@@ -18,14 +19,12 @@ interface ThuocTinhDangNhap {
   khiDangKy: () => void;
 }
 
-const API_URL = Platform.OS === 'web'
-  ? 'http://localhost:3000/api/login'
-  : 'http://10.21.61.245:3000/api/login';
+const API_URL = buildApiUrl('/api/login');
 
 interface DuLieuDangNhap {
   message?: string;
   token?: string;
-  user?: { id: number; name: string; student_code: string; email: string; phone: string | null; role: 'user' | 'admin' };
+  user?: { id: number; name: string; student_code: string; email: string; phone: string | null; default_address: string | null; role: 'user' | 'staff' | 'admin' };
 }
 
 export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDangNhap) {
@@ -66,6 +65,7 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
         maSinhVien: data.user.student_code,
         email: data.user.email,
         phone: data.user.phone || '',
+        defaultAddress: data.user.default_address || '',
         role: data.user.role,
         token: data.token,
       });
@@ -87,12 +87,12 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
         >
           <View style={styles.form}>
             <View style={styles.brand}>
-              <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
-              <Text style={styles.brandText}>SMART CANTEEN</Text>
+              <View style={styles.logo}><Text style={styles.logoText}>AC</Text></View>
+              <Text style={styles.brandText}>APP CANTEEN</Text>
             </View>
 
             <Text style={styles.title}>Chào mừng trở lại!</Text>
-            <Text style={styles.description}>Đăng nhập để tiếp tục sử dụng Smart Canteen</Text>
+            <Text style={styles.description}>Đăng nhập để tiếp tục sử dụng App Canteen</Text>
 
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -167,7 +167,7 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
                 <View style={styles.accentLine} />
                 <Text style={styles.imageTitle}>Bữa ăn ngon,{`\n`}ngày học tốt hơn.</Text>
                 <Text style={styles.imageDescription}>
-                  Đặt món nhanh chóng và tiện lợi cùng Smart Canteen.
+                  Đặt món nhanh chóng và tiện lợi cùng App Canteen.
                 </Text>
               </View>
             </ImageBackground>

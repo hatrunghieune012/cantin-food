@@ -1,4 +1,7 @@
 .expo-check/
+node_modules/
+.expo/
+/a
 dist/
 .DS_Store
 *.log
