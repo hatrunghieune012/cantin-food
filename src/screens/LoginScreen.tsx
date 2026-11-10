@@ -1,3 +1,4 @@
+import { apiFetch } from '../api';
 import { apiUrl as buildApiUrl } from '../api';
 import { useState } from 'react';
 import {
@@ -15,7 +16,7 @@ import {
 import type { NguoiDung } from '../types';
 
 interface ThuocTinhDangNhap {
-  khiDangNhap: (taiKhoan: NguoiDung) => void;
+  khiDangNhap: (taiKhoan: NguoiDung) => void | Promise<void>;
   khiDangKy: () => void;
 }
 
@@ -24,7 +25,7 @@ const API_URL = buildApiUrl('/api/login');
 interface DuLieuDangNhap {
   message?: string;
   token?: string;
-  user?: { id: number; name: string; student_code: string; email: string; phone: string | null; default_address: string | null; role: 'user' | 'staff' | 'admin' };
+  user?: { id: number; name: string; student_code: string | null; gender: NguoiDung['gender']; date_of_birth: string | null; email: string; phone: string | null; default_address: string | null; role: 'user' | 'staff' | 'admin' };
 }
 
 export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDangNhap) {
@@ -47,7 +48,7 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
     try {
       setDangGui(true);
       setThongBao('');
-      const response = await fetch(API_URL, {
+      const response = await apiFetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: emailDaCat, password: matKhau }),
@@ -59,10 +60,12 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
         return;
       }
 
-      khiDangNhap({
+      await khiDangNhap({
         id: data.user.id,
         hoTen: data.user.name,
-        maSinhVien: data.user.student_code,
+        maSinhVien: data.user.student_code || '',
+        gender: data.user.gender,
+        dateOfBirth: data.user.date_of_birth,
         email: data.user.email,
         phone: data.user.phone || '',
         defaultAddress: data.user.default_address || '',
@@ -70,7 +73,7 @@ export default function ManHinhDangNhap({ khiDangNhap, khiDangKy }: ThuocTinhDan
         token: data.token,
       });
     } catch (error) {
-      setThongBao('Không thể kết nối đến server.');
+      setThongBao(error instanceof Error ? error.message : 'Không thể đăng nhập hoặc lưu phiên trên thiết bị.');
     } finally {
       setDangGui(false);
     }

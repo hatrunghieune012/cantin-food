@@ -1,0 +1,433 @@
+BÁO CÁO KIỂM TRA VÀ ĐÁNH GIÁ DỰ ÁN APP CANTEEN
+Ngày kiểm tra: 03/11/2026
+Workspace: D:\app_canteen
+
+KẾT LUẬN CHÍNH
+
+Dự án đã có kiến trúc fullstack và phần lớn nghiệp vụ MVP, nhưng chưa đủ bằng chứng để nghiệm thu là “ổn định trên Local” hoặc “sẵn sàng bàn giao”. Backend kết nối được database và phục vụ API đọc; kiểm tra TypeScript đạt. Những luồng ghi dữ liệu, giao diện và Android/iOS chưa được kiểm thử thực tế trong lượt đánh giá này.
+
+Phạm vi: đọc source, kiểm tra tĩnh, đọc metadata database và thử API chỉ đọc. Không sửa source, cài package, chạy migration/seed hoặc ghi/xóa dữ liệu nghiệp vụ. Workspace đã có các thay đổi từ trước; chúng được giữ nguyên. File báo cáo này được tạo sau đó theo yêu cầu của người dùng.
+
+Quy ước:
+- Đã triển khai: xác minh có implementation trong source.
+- Đã kiểm thử thành công: có kết quả chạy thực tế trong lượt đánh giá này.
+- Chưa kiểm thử: đã đọc implementation nhưng chưa thực hiện đầy đủ nghiệp vụ.
+- Chưa có: không tìm thấy implementation tương ứng trong phạm vi source đã khảo sát.
+- Rủi ro: cần kiểm thử tái hiện; không khẳng định sự cố đã xảy ra.
+
+======================================================================
+A. TỔNG QUAN DỰ ÁN
+======================================================================
+
+1. Công nghệ và phiên bản
+
+- Frontend: React 19.1.0, React Native 0.81.4, Expo 54.0.37 đang cài, TypeScript 5.9.3.
+- Backend: Node.js 24.19.0, Express 5.2.1 đang cài, mysql2 3.24.4, bcrypt 6.0.0.
+- Ảnh: Multer 2.4.0 nhận upload; Sharp 0.35.5 chuyển ảnh sang WebP.
+- Database: kết nối thành công app_canteen. Server tự báo “MySQL Community Server - GPL”, VERSION() = 26.7.0. Đây là giá trị trả về trực tiếp từ server, không phải phiên bản suy ra từ README.
+- Expo public config nhận Android, iOS và web. Chưa xác nhận chạy giao diện trên các nền tảng.
+- Phiên bản đang cài có thể khác số ghi trong package.json do khoảng phiên bản ^ và ~.
+
+2. Kiến trúc và cấu trúc
+
+- App.tsx: giữ phiên đăng nhập, giỏ hàng, danh sách món và điều hướng bằng React state.
+- src/screens/: đăng nhập, đăng ký, trang chủ, thực đơn, chi tiết món, giỏ, hồ sơ, admin, nhân viên, bán tại quầy, bàn.
+- src/components/: danh mục món, quản lý đơn, quản lý tài khoản và các thành phần giao diện dùng chung.
+- src/api.ts: helper gọi HTTP bằng fetch, kiểu dữ liệu API đơn và định dạng thời gian.
+- backend/server.js: xác thực, tài khoản, ảnh, thống kê và một phần API món/đơn.
+- backend/canteen.js: đặt món, tồn kho, trạng thái đơn, phân quyền và bàn.
+- backend/db.js: MySQL connection pool, múi giờ +07:00.
+- backend/migrations/: SQL 000–007.
+- backend/scripts/: migration runner và tạo admin.
+- backend/test/: kiểm thử HTTP/MySQL và nâng cấp dữ liệu cũ.
+
+Cấu trúc phù hợp quy mô đồ án sinh viên. Chưa cần viết lại toàn bộ; nên ưu tiên lỗi nghiệp vụ và kiểm thử. Navigation tự quản lý còn thiếu xử lý Back/deep link rõ ràng.
+
+3. Kết nối và môi trường Local
+
+- Frontend dùng EXPO_PUBLIC_API_URL nếu được cấu hình.
+- Trên web, mặc định lấy protocol/hostname hiện tại và cổng 3000.
+- Trên native, mặc định http://localhost:3000. Điện thoại cần cấu hình IP LAN của máy backend; localhost trên điện thoại không trỏ tới máy tính.
+- Backend đọc cấu hình DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME từ môi trường qua dotenv.
+- MySQL pool tối đa 10 kết nối; mysql2 và session SQL đặt múi giờ +07:00.
+- Giờ nhận món cấu hình qua CANTEEN_OPEN, CANTEEN_CLOSE, PICKUP_SLOT_MINUTES, PICKUP_LEAD_MINUTES.
+- Chưa kiểm chứng bản build native và kết nối từ điện thoại thật.
+
+Bằng chứng: src/api.ts:3; backend/db.js; .env.example; backend/.env.example; app.json.
+
+4. Vai trò và phạm vi nghiệp vụ
+
+- user: đăng ký/đăng nhập, tìm món, giỏ, đặt trước, chọn giờ nhận, xem/hủy đơn còn pending, sửa hồ sơ, xem bàn.
+- staff: xử lý đơn, xác nhận thu tiền mặt khi giao món, no-show, bán tại quầy, quản lý bàn.
+- admin: chức năng vận hành, quản lý món/tồn kho, quản lý tài khoản/quyền và thống kê.
+- Danh mục hiện cố định trong code; chưa có CRUD danh mục độc lập.
+- Thanh toán trực tuyến, hoàn tiền, in hóa đơn và giữ chỗ bàn chưa có; chưa thấy đây là phạm vi bắt buộc.
+
+5. Database
+
+Đã xác minh 7 bảng InnoDB:
+accounts, auth_sessions, foods, orders, order_items, canteen_tables, schema_migrations.
+
+Các điểm tốt:
+- Có primary key.
+- UNIQUE: email, mã sinh viên, token hash, mã bàn, request key.
+- Foreign key: chủ đơn, chi tiết đơn tới đơn, phiên tới tài khoản, nhân viên xử lý, người cập nhật bàn.
+- CHECK: giá món dương, tồn kho không âm, số ghế hợp lệ.
+- Có lịch sử migration 000–007 trong database hiện tại.
+- Có index phục vụ trạng thái/giờ nhận, thanh toán và phiên.
+- Chi tiết đơn lưu snapshot tên/giá món tại thời điểm mua.
+- Tạo đơn dùng transaction, SELECT ... FOR UPDATE với thứ tự ID món, lấy giá từ database.
+- Hủy đơn khóa dòng đơn; hoàn kho nằm cùng transaction.
+- Điều chỉnh tồn kho dùng delta atomic, tránh ghi đè tồn kho đã bị tiêu thụ.
+- Dữ liệu nghiệp vụ nằm trong DB, không chỉ trong bộ nhớ frontend. Chưa thực hiện phép thử khởi động lại để kiểm chứng vận hành sau restart.
+- SQL nhận dữ liệu người dùng dùng tham số; chưa thấy điểm nối trực tiếp input thành SQL trong các route đã đọc.
+
+Khoảng trống:
+- order_items.food_id chưa có FK tới foods.
+- Số lượng/giá chi tiết và tổng tiền đơn chưa có CHECK tương ứng.
+- Đây là khoảng trống bảo vệ dữ liệu tầng DB, không phải bằng chứng dữ liệu hiện tại đã hỏng.
+- Migration runner có khóa MySQL và lịch sử; DDL có thể commit từng phần khi migration lỗi. Chưa chạy thử migration trong lượt này.
+
+Bằng chứng: backend/migrations/*.sql; backend/scripts/migrate.js; backend/canteen.js:96,174; metadata information_schema đã đọc.
+
+======================================================================
+B. KIỂM TRA CHỨC NĂNG VÀ API
+======================================================================
+
+1. Đăng ký, đăng nhập, đăng xuất
+Triển khai: có API và UI.
+Kiểm thử: chưa thử đăng nhập thành công với tài khoản thật, vì đăng nhập ghi auth_sessions.
+Vấn đề: validation tài khoản, timeout, xử lý phiên hết hạn.
+File: backend/server.js:74; src/screens/LoginScreen.tsx; src/screens/RegisterScreen.tsx; App.tsx:108.
+
+2. Xác thực API
+Triển khai: token ngẫu nhiên, DB lưu hash SHA-256, hạn 7 ngày; xác thực lại trạng thái tài khoản/quyền từ DB.
+Kiểm thử thành công: thiếu token và token sai trả 401.
+Chưa thử: phiên hết hạn thật, đổi quyền/vô hiệu hóa trong lúc người dùng đang thao tác.
+File: backend/server.js:33.
+
+3. Xem, tìm kiếm, lọc món
+Triển khai: có API và UI; lọc theo tên/danh mục từ dữ liệu món thực.
+Kiểm thử thành công: GET /api/foods trả 200, 17 món đang bán, giá kiểu number.
+Chưa thử: thao tác UI tìm/lọc.
+Vấn đề: khi tải lỗi, dữ liệu cũ có thể vẫn còn hiển thị.
+File: src/components/FoodCatalog.tsx; App.tsx; backend/server.js:191.
+
+4. Chi tiết món và giỏ hàng
+Triển khai: xem món, thêm, tăng/giảm, xóa từng món/xóa toàn bộ; có giới hạn theo snapshot tồn kho.
+Kiểm thử: chưa thử UI.
+Vấn đề: giỏ không lưu sau reload; giá và tồn kho trong giỏ là snapshot.
+File: src/screens/FoodDetailScreen.tsx; src/screens/CartScreen.tsx; App.tsx.
+
+5. Đặt trước và chọn giờ nhận
+Triển khai: có khung giờ trong 3 ngày, thời gian chờ tối thiểu, ghi chú, request key, transaction.
+Kiểm thử: chưa thử tạo đơn.
+Vấn đề: xác nhận lại giá khi thay đổi; phục hồi request sau mất mạng.
+File: backend/canteen.js:96; src/screens/CartScreen.tsx.
+
+6. Lịch sử, theo dõi và hủy đơn
+Triển khai: có; polling mỗi 20 giây khi màn hình mở.
+Kiểm thử: chưa thử nghiệp vụ.
+Quy tắc trong code: user chỉ hủy đơn online của mình khi pending; trạng thái cuối không mở lại; retry cùng trạng thái không hoàn kho lần nữa.
+File: src/components/OrdersPanel.tsx; backend/canteen.js:174.
+
+7. Xử lý đơn, tiền mặt và no-show
+Triển khai: có.
+Luồng online: pending -> preparing -> ready -> completed.
+Hoàn thành online yêu cầu xác nhận cash.
+Hủy pending hoàn kho; hủy preparing không hoàn kho; hủy ready chỉ no_show sau giờ hẹn ít nhất 30 phút.
+Đơn legacy_delivery vẫn dùng luồng cũ và không mặc định đã thanh toán.
+Kiểm thử: chưa thử các chuyển trạng thái trong lượt này.
+File: backend/canteen.js:52,174; src/components/OrdersPanel.tsx.
+
+8. Bán trực tiếp tại quầy
+Triển khai: có; tạo đơn completed, khách không cần tài khoản, kiểm tra tổng tiền nhân viên xác nhận.
+Kiểm thử: chưa thử tạo giao dịch.
+Vấn đề: request key chưa lưu bền vững; làm mới giá/tồn kho tạo key mới.
+File: src/screens/CounterScreen.tsx; backend/canteen.js:96.
+
+9. Quản lý món và tồn kho
+Triển khai: thêm/sửa/ngừng bán, danh mục cố định, ảnh, điều chỉnh kho atomic.
+Kiểm thử: chưa thử ghi dữ liệu.
+Vấn đề: chưa có sổ biến động kho đầy đủ.
+File: src/screens/AdminScreen.tsx; backend/canteen.js:68; backend/server.js:225.
+
+10. Upload ảnh
+Triển khai: API nhận ảnh, giới hạn 5 MB, xử lý JPG/PNG/WebP, xuất WebP; UI chọn file trên web.
+Kiểm thử: chưa upload ảnh.
+Giới hạn: chọn ảnh từ máy chưa hỗ trợ native; hủy form sau upload có thể để lại ảnh không được tham chiếu.
+File: src/screens/AdminScreen.tsx:266; backend/server.js:203.
+
+11. Quản lý tài khoản và phân quyền
+Triển khai: xem/tìm/lọc/sửa tài khoản, đổi user/staff, kích hoạt/vô hiệu hóa, xóa phiên cũ khi đổi access; bảo vệ admin.
+Kiểm thử: xác minh chặn request không đăng nhập; chưa thử đủ quyền user/staff/admin.
+File: src/components/AccountsPanel.tsx; backend/canteen.js:259; backend/server.js:403.
+
+12. Bàn
+Triển khai: xem, lọc khu vực, thêm/sửa/ngừng dùng, trạng thái cập nhật thủ công; polling 30 giây.
+Kiểm thử: chưa thử nghiệp vụ.
+Giới hạn: không đặt/giữ bàn.
+File: src/screens/TablesScreen.tsx; backend/canteen.js:229.
+
+13. Thống kê
+Triển khai: số món/user/đơn hôm nay, tiền mặt đã thu, món bán nhiều, đơn gần đây, số đơn 7 ngày.
+Kiểm thử: chưa kiểm thử bằng dữ liệu đối soát.
+File: backend/server.js:366; src/screens/AdminScreen.tsx.
+
+14. Frontend và các phần chưa hoàn chỉnh
+
+- State: chủ yếu useState/useRef/useEffect; không có Redux hoặc thư viện navigation.
+- Có loading/error/empty state và nút tải lại ở nhiều màn; hình ảnh có fallback.
+- Có breakpoint responsive ở catalog, trang chủ, admin và giỏ; chưa kiểm thử trực quan ở các kích thước.
+- Chưa có timeout/abort tập trung; request trực tiếp còn rải rác.
+- Chưa xác minh crash runtime trên Android/iOS. Typecheck không chứng minh không có lỗi runtime.
+- src/screens/DangKy.tsx là màn hình giả lập cũ, không được App dùng. Luồng thật dùng RegisterScreen.tsx.
+- Biểu tượng menu/chuông dashboard chỉ là phần hiển thị, chưa có chức năng tương ứng.
+- Chưa tìm thấy test cho upload ảnh, timeout, phục hồi phiên native và UI.
+
+15. Danh sách API
+
+Tất cả có tiền tố /api:
+
+Phiên và cá nhân:
+POST /register
+POST /login
+POST /logout
+GET  /me
+PUT  /users/me
+
+Món:
+GET  /foods
+GET  /admin/foods
+POST /admin/foods
+PUT  /admin/foods/:id
+PUT  /admin/foods/:id/stock
+POST /admin/food-images
+
+Đơn:
+GET  /pickup-slots
+GET  /orders
+POST /orders
+GET  /orders/:id
+PUT  /orders/:id/status
+GET  /staff/orders
+GET  /admin/orders
+PUT  /staff/orders/:id/status
+PUT  /admin/orders/:id/status
+
+Quản trị:
+GET  /admin/dashboard
+GET  /admin/users
+POST /admin/users
+GET  /admin/users/:id
+PUT  /admin/users/:id
+PUT  /admin/users/:id/access
+DELETE /admin/users/:id: chủ động trả 405, hướng dẫn vô hiệu hóa.
+
+Bàn:
+GET  /tables
+POST /tables
+PUT  /tables/:id
+
+API POST /admin/users tạo tài khoản user do admin thao tác, không tạo role admin. UI hiện chưa có luồng tạo tài khoản tương ứng qua endpoint này. Một số route đọc đơn riêng/route admin cũ vẫn tồn tại trong khi UI dùng API danh sách và route staff.
+
+======================================================================
+C. DANH SÁCH LỖI VÀ RỦI RO
+======================================================================
+
+Chưa có bằng chứng để kết luận lỗi Critical. Mục có nhãn “rủi ro” cần tái hiện, không coi là sự cố đã xảy ra.
+
+R01 — High — Rủi ro tạo đơn trùng sau mất phản hồi
+Tình huống: server đã lưu nhưng client không nhận response; người dùng đổi màn hình/làm mới rồi gửi lại với key khác.
+Bằng chứng: key nằm trong useRef; quầy đổi key khi làm mới.
+File: src/screens/CartScreen.tsx:33,46; src/screens/CounterScreen.tsx:19,48.
+Khắc phục: giữ key và payload của giao dịch chưa rõ kết quả; đối soát trước khi tạo key mới.
+
+F02 — High — Giá đơn online có thể khác giá vừa xác nhận
+Bằng chứng: UI tính tổng từ snapshot giỏ; backend lấy giá mới trong DB. expectedTotal chỉ được kiểm tra cho counter.
+File: backend/canteen.js:145,157; src/screens/CartScreen.tsx:71,96.
+Khắc phục: kiểm tra tổng tiền xác nhận cho online; nếu giá đổi, yêu cầu người dùng xác nhận lại.
+Đây là nhận định từ logic code, chưa tái hiện bằng giao dịch ghi dữ liệu.
+
+F03 — Medium — Chưa xử lý 401 tập trung trong phiên sử dụng
+Bằng chứng: /me chỉ chạy khi token thay đổi; request helper chỉ ném lỗi, không reset phiên.
+File: App.tsx:108; src/api.ts:9.
+Khắc phục: thu hồi state phiên và đưa về đăng nhập khi nhận 401.
+
+R04 — Medium — Request chờ lâu và polling chồng nhau
+Bằng chứng: không có timeout/abort trong helper và các fetch trực tiếp; polling theo interval.
+File: src/api.ts; src/screens/CartScreen.tsx; src/components/OrdersPanel.tsx; src/screens/TablesScreen.tsx.
+Khắc phục: timeout, hủy request khi unmount, tránh chồng request, retry giữ nguyên request key khi chưa rõ kết quả.
+
+F05 — Medium — Validation tài khoản chưa đầy đủ
+Bằng chứng: không kiểm tra định dạng email và độ dài tên/mã/email theo schema trước SQL.
+File: backend/server.js:74,264,442,496; src/screens/RegisterScreen.tsx.
+Khắc phục: validate thống nhất, trả 400 với thông báo rõ ràng.
+
+F06 — Medium — Tranh chấp đăng ký trùng có thể trả 500
+Bằng chứng: SELECT kiểm tra tồn tại trước INSERT; catch route trả 500 cả lỗi UNIQUE phát sinh sau đó.
+File: backend/server.js:94,117 và các route quản lý tài khoản.
+Khắc phục: bắt ER_DUP_ENTRY tại route, trả 409. UNIQUE của DB vẫn ngăn lưu trùng.
+
+R07 — Medium — Chưa giới hạn tần suất xác thực
+Bằng chứng: middleware/route chưa có rate limiting đăng nhập/đăng ký.
+File: backend/server.js:18,74,123.
+Khắc phục: giới hạn request, nhất là xác thực và upload.
+
+F08 — Medium — State chưa bền vững trên thiết bị
+Bằng chứng: giỏ ở React state; lưu phiên chỉ dùng sessionStorage trên web, native trả về null khi đọc phiên.
+File: App.tsx:24,39,75.
+Khắc phục: lưu giỏ và giao dịch chờ; chọn cơ chế lưu token native phù hợp.
+
+R09 — Medium — Navigation và giao diện native chưa xác minh
+Bằng chứng: chuyển màn bằng state, không có BackHandler; nhiều breakpoint và ScrollView lồng nhau.
+File: App.tsx; src/screens/AdminScreen.tsx; src/screens/CartScreen.tsx.
+Khắc phục: thử Back, bàn phím, cuộn, modal, safe area và màn hình nhỏ trên máy thật.
+
+F10 — Low — README không khớp source
+Bằng chứng: README nói chưa upload ảnh, nhưng API và UI đã có.
+File: README.md:165; backend/server.js:203; src/screens/AdminScreen.tsx:266.
+Khắc phục: cập nhật phạm vi và giới hạn web/native.
+
+R11 — Low — Hiệu năng khi dữ liệu tăng
+Bằng chứng: danh sách đơn/tài khoản tải toàn bộ; ghép chi tiết đơn bằng lọc lặp.
+File: backend/server.js:293,403.
+Khắc phục: phân trang khi cần, gom chi tiết theo ID đơn.
+
+Các rủi ro dữ liệu khác cần kiểm thử:
+- Nhiều người đặt cùng món tồn kho giới hạn: có khóa dòng và transaction nhưng chưa chạy test trong lượt này.
+- Lỗi giữa quá trình ghi: code rollback nhưng chưa mô phỏng sự cố thực tế.
+- Hủy/đổi trạng thái đồng thời: có khóa dòng và xử lý retry nhưng chưa xác nhận runtime.
+- Ảnh upload không được tham chiếu sau hủy form; cần chính sách dọn file phù hợp.
+- DB thiếu một số FK/CHECK như nêu tại phần A; cần đối chiếu dữ liệu trước khi bổ sung.
+
+======================================================================
+D. KẾT QUẢ KIỂM TRA VÀ MỨC ĐỘ HOÀN THIỆN
+======================================================================
+
+ĐÃ CHẠY THÀNH CÔNG
+
+1. npm run typecheck
+   Kết quả: tsc --noEmit đạt.
+
+2. node --check server.js
+   node --check canteen.js
+   node --check scripts/migrate.js
+   Kết quả: đạt kiểm tra cú pháp backend.
+
+3. npm ls --depth=0 ở frontend và backend
+   Kết quả: không báo thiếu dependency trực tiếp.
+   Đây không phải audit lỗ hổng dependency.
+
+4. node node_modules/expo/bin/cli config --type public
+   Kết quả: cấu hình hợp lệ, nhận ios/android/web.
+
+5. Kết nối MySQL và truy vấn chỉ đọc
+   Đã đọc VERSION, version_comment, sql_mode, danh sách bảng/engine, constraints và lịch sử migration.
+   Kết quả: kết nối app_canteen thành công, 7 bảng InnoDB, lịch sử 000–007.
+   Không đọc hoặc đưa dữ liệu tài khoản riêng tư vào báo cáo.
+
+6. HTTP smoke test qua backend khởi chạy tạm trên cổng loopback tự chọn
+   GET /api/foods: 200, 17 món, giá kiểu number, chỉ món đang bán.
+   GET /api/me không token: 401.
+   GET /api/orders không token: 401.
+   GET /api/admin/users không token: 401.
+   GET /api/staff/orders không token: 401.
+   GET /api/tables không token: 401.
+   GET /api/me với token không hợp lệ: 401.
+   Server tạm đã được đóng sau kiểm tra.
+
+CHƯA CHẠY / CHƯA XÁC MINH
+
+- Integration tests: chưa chạy. npm test tự tạo database, chạy migration và chèn dữ liệu; yêu cầu ban đầu cấm tự động migration/seed nên không thực hiện.
+- ESLint: chưa có script/cấu hình kiểm thử tương ứng trong dự án đã khảo sát.
+- Frontend unit/UI tests: chưa có bộ test tương ứng.
+- Web export/build: chưa chạy trong lượt này.
+- Android/iOS build và UI end-to-end: chưa chạy.
+- Không thử đăng nhập thật vì sẽ tạo phiên trong DB; do đó chưa nghiệm thu toàn luồng có quyền.
+- Không dùng kết quả “đã test” trong README như bằng chứng chạy mới trong lần đánh giá này.
+
+BỘ TEST HIỆN CÓ TRONG SOURCE
+
+backend/test/integration.test.js:
+- Phân quyền quản lý món/tài khoản/đơn.
+- Giờ nhận, giá backend, retry cùng key và xung đột payload.
+- Hủy đồng thời, hoàn kho đúng một lần.
+- User khác không được xem/hủy đơn.
+- Rollback đơn nhiều món khi một món không hợp lệ.
+- Online và counter tranh chấp tồn kho.
+- Điều chỉnh kho atomic, thanh toán tại quầy, giá thay đổi.
+- Chuyển trạng thái hợp lệ, hủy món đã chuẩn bị.
+- Hoàn thành yêu cầu cash; no-show yêu cầu quá thời gian chờ.
+- Request đồng thời cùng key chỉ tạo một đơn.
+- Món ngừng bán, quyền quản lý bàn.
+- Đơn legacy_delivery, dashboard.
+- Sửa tài khoản, vô hiệu hóa/thu hồi phiên, bảo vệ admin.
+- Chạy migration lặp lại trong setup DB kiểm thử.
+
+backend/test/upgrade.test.js:
+- Bảo toàn trường đơn cũ khi nâng cấp.
+- Không tự hoàn kho cho các đơn đã hủy trước migration.
+
+Lệnh chạy khi được phép dùng môi trường kiểm thử riêng:
+cd D:\app_canteen\backend
+npm test
+
+Lưu ý: test tạo database canteen_test_* và giữ lại; cần quyền CREATE DATABASE. Không coi đây là lệnh chỉ đọc.
+
+XẾP LOẠI
+
+- Mức 3 về PHẠM VI TRIỂN KHAI: Fullstack MVP.
+- Chưa xác nhận mức 3 về VẬN HÀNH TOÀN LUỒNG.
+- Đã có bằng chứng hoạt động cho nền tảng/API đọc; chưa đủ cho toàn bộ nghiệp vụ.
+- Chưa đạt mức 4 (ổn định Local) hoặc mức 5 (sẵn sàng build/bàn giao).
+- Không đưa tỷ lệ % hoàn thiện vì chưa có tiêu chí và kết quả kiểm thử đủ để tính đáng tin cậy.
+
+Điều kiện tiếp theo: integration tests trên DB riêng, UI đủ ba vai trò, xử lý R01/F02, thử mất mạng và thực hiện bản build Android.
+
+======================================================================
+E. KẾ HOẠCH HOÀN THIỆN THEO ƯU TIÊN
+======================================================================
+
+Ưu tiên 1 — Chống trùng sau mất phản hồi
+Module: CartScreen, CounterScreen, API đơn.
+Mục tiêu: bảo toàn giao dịch chưa rõ kết quả.
+Nghiệm thu: server đã commit nhưng mất response; đổi màn hình/mở lại/retry vẫn chỉ có một đơn, kho trừ một lần.
+
+Ưu tiên 2 — Xác nhận giá online
+Module: CartScreen và backend/canteen.js.
+Mục tiêu: tổng tiền người dùng chấp thuận khớp tổng tiền được lưu.
+Nghiệm thu: admin đổi giá trước checkout thì yêu cầu xác nhận lại; không âm thầm tạo đơn với giá khác.
+
+Ưu tiên 3 — Timeout và phiên hết hạn
+Module: src/api.ts, App.tsx, các màn dùng fetch trực tiếp.
+Mục tiêu: lỗi mạng/phiên được xử lý nhất quán.
+Nghiệm thu: backend treo/mất mạng có thông báo và thoát loading; 401 đưa về đăng nhập; retry không gây đơn trùng.
+
+Ưu tiên 4 — Validation và toàn vẹn dữ liệu
+Module: route tài khoản, schema database.
+Mục tiêu: chặn input sai và báo lỗi đúng.
+Nghiệm thu: email sai/chuỗi quá dài trả 400; đăng ký trùng đồng thời trả 409; không có ghi dữ liệu dở dang.
+
+Ưu tiên 5 — Kiểm thử nghiệp vụ trên DB riêng
+Module: backend/test và các luồng chính.
+Mục tiêu: chứng minh transaction, phân quyền và chống trùng thực sự hoạt động.
+Nghiệm thu: test hiện có đạt; bổ sung giá đổi, upload, mất phản hồi/retry; đối soát đơn, kho, thanh toán sau từng tình huống.
+
+Ưu tiên 6 — Nghiệm thu UI web/Android
+Module: toàn bộ màn hình.
+Mục tiêu: thao tác được trên thiết bị mục tiêu.
+Nghiệm thu: user/staff/admin hoàn tất luồng chính; Back, bàn phím, modal, cuộn và màn hình nhỏ không cản thao tác; loading/error/empty rõ ràng.
+
+Ưu tiên 7 — Hoàn thiện bàn giao
+Module: README, cấu hình Expo, ảnh upload, quy trình vận hành.
+Mục tiêu: người khác có thể cài/chạy/kiểm tra lại.
+Nghiệm thu: hướng dẫn tái lập được; điện thoại dùng IP LAN đúng; có APK thử nghiệm, cấu hình môi trường mẫu, hướng dẫn sao lưu DB và ảnh.
+
+Chưa có căn cứ bắt buộc bổ sung thanh toán online, đặt bàn hay CRUD danh mục riêng để hoàn thành phạm vi hiện tại. Ưu tiên chứng minh các luồng đã có hoạt động ổn định trước khi mở rộng.
+
+GHI CHÚ CUỐI
+
+- Các đường dẫn trong báo cáo tính từ D:\app_canteen; số dòng là tại thời điểm kiểm tra.
+- Báo cáo phân biệt kết quả chạy mới với nhận định từ source và nội dung README.
+- File này ghi lại kết quả đánh giá đã thực hiện; không phải xác nhận đã sửa các vấn đề được liệt kê.

@@ -2,7 +2,9 @@
 node_modules/
 .expo/
 /a
+/.local-backups/
 dist/
+backend/uploads/
 .DS_Store
 *.log
 .env

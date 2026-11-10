@@ -1,6 +1,17 @@
 {
   "expo": {
     "name": "App Canteen",
-    "slug": "app-canteen"
+    "slug": "app-canteen",
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép chọn ảnh món ăn để quản lý thực đơn.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ]
   }
 }

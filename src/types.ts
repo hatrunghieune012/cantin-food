@@ -1,11 +1,13 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan' | 'admin' | 'staff' | 'choNgoi';
+export type TenManHinh = 'dangNhap' | 'dangKy' | 'trangChu' | 'thucDon' | 'chiTiet' | 'gioHang' | 'caNhan' | 'admin' | 'staff';
 
 export interface NguoiDung {
   id: number;
   hoTen: string;
   maSinhVien: string;
+  gender?: 'male' | 'female' | 'other' | null;
+  dateOfBirth?: string | null;
   email: string;
   phone: string;
   defaultAddress: string;

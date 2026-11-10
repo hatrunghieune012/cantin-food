@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { dinhDangGia } from '../data/foods';
 import type { MonAn, MonTrongGioHang } from '../types';
+import FoodImage from '../components/FoodImage';
 
 interface ThuocTinhChiTietMon {
   monAn: MonAn | null;
@@ -19,6 +20,7 @@ export default function ManHinhChiTietMon({
   khiXemGioHang,
 }: ThuocTinhChiTietMon) {
   const [soLuong, setSoLuong] = useState(1);
+  const [notice, setNotice] = useState('');
 
   if (monAn === null) {
     return null;
@@ -36,7 +38,7 @@ export default function ManHinhChiTietMon({
     if (!monDangXem.conMon) return;
     const monDaCo = gioHang.find((mon) => mon.ma === monDangXem.ma);
 
-    if ((monDaCo?.soLuong || 0) + soLuong > monDangXem.soLuongTon) { Alert.alert('Không đủ món', 'Số lượng vượt tồn kho hiện tại.'); return; }
+    if ((monDaCo?.soLuong || 0) + soLuong > monDangXem.soLuongTon) { setNotice('Số lượng vượt tồn kho hiện tại.'); return; }
     if (monDaCo) {
       const gioHangMoi = gioHang.map((mon) => {
         if (mon.ma === monDangXem.ma) {
@@ -51,7 +53,7 @@ export default function ManHinhChiTietMon({
       setGioHang([...gioHang, monMoi]);
     }
 
-    Alert.alert('Thành công', 'Đã thêm món vào giỏ hàng.');
+    setNotice('Đã yêu cầu thêm món. Kiểm tra số lượng trong giỏ hàng.');
   }
 
   return (
@@ -60,12 +62,13 @@ export default function ManHinhChiTietMon({
         <Text style={styles.back}>‹ Quay lại</Text>
       </Pressable>
 
-      <Image source={monDangXem.hinhAnh} style={styles.image} />
+      <FoodImage source={monDangXem.hinhAnh} name={monDangXem.ten} drink={monDangXem.danhMuc === 'Đồ uống'} style={styles.image} />
       <Text style={styles.name}>{monDangXem.ten}</Text>
       <Text style={styles.price}>{dinhDangGia(monDangXem.gia)}</Text>
       <Text style={styles.description}>{monDangXem.moTa}</Text>
       <Text style={[styles.available, !monDangXem.conMon && styles.unavailable]}>● {monDangXem.conMon ? 'Còn hàng' : 'Hết hàng'}</Text>
 
+      {notice !== '' && <Text accessibilityLiveRegion="polite">{notice}</Text>}
       <Text style={styles.label}>Số lượng</Text>
       <View style={styles.counter}>
         <Pressable style={styles.circle} onPress={giamSoLuong}>
@@ -74,7 +77,7 @@ export default function ManHinhChiTietMon({
 
         <Text style={styles.quantity}>{soLuong}</Text>
 
-        <Pressable style={styles.circle} onPress={() => setSoLuong(Math.min(monDangXem.soLuongTon, soLuong + 1))}>
+        <Pressable style={styles.circle} disabled={!monDangXem.conMon || soLuong >= monDangXem.soLuongTon} onPress={() => setSoLuong(Math.min(monDangXem.soLuongTon, soLuong + 1))}>
           <Text style={styles.symbol}>+</Text>
         </Pressable>
       </View>
@@ -97,7 +100,7 @@ export default function ManHinhChiTietMon({
 const styles = StyleSheet.create({
   container: { padding: 20 },
   back: { marginBottom: 18, color: '#D85624', fontSize: 16, fontWeight: '700' },
-  image: { width: '100%', height: 240, borderRadius: 18 },
+  image: { width: '100%', maxWidth: 800, alignSelf: 'center', borderRadius: 18 },
   name: { marginTop: 20, color: '#25282D', fontSize: 28, fontWeight: '800' },
   price: { marginTop: 7, color: '#E86A33', fontSize: 20, fontWeight: '700' },
   description: { marginTop: 16, color: '#656C76', fontSize: 15 },

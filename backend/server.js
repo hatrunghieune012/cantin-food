@@ -5,14 +5,42 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const path = require('node:path');
+const fs = require('node:fs');
+const multer = require('multer');
+const sharp = require('sharp');
 const db = require('./db');
 
+const { validBirthDate, validGender } = require('./accountValidation');
 const { nextStatuses, validateFood } = require('./canteen');
 const app = express();
 
 // Cho phép ứng dụng React Native gọi API và cho Express đọc JSON trong req.body.
 app.use(cors());
 app.use(express.json());
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PUT'].includes(req.method) && req.path !== '/admin/food-images' && req.path !== '/logout' &&
+      (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))) {
+    return res.status(400).json({ message: 'Nội dung yêu cầu phải là JSON object.' });
+  }
+  next();
+});
+function validIdentity(name, code, email) {
+  return name.length > 0 && name.length <= 100 && code.length <= 20
+    && email.length <= 100 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+function accountError(res, error) {
+  const status = error.code === 'ER_DUP_ENTRY' ? 409 : error.code === 'ER_DATA_TOO_LONG' ? 400 : 500;
+  return res.status(status).json({ message: status === 409 ? 'Email hoặc mã tài khoản đã tồn tại.' : status === 400 ? 'Dữ liệu tài khoản không hợp lệ.' : 'Lỗi server hoặc cơ sở dữ liệu' });
+}
+const uploadRoot = process.env.UPLOAD_ROOT || path.join(__dirname, 'uploads');
+const foodUploadRoot = path.join(uploadRoot, 'foods');
+fs.mkdirSync(foodUploadRoot, { recursive: true });
+app.use('/uploads', express.static(uploadRoot, { fallthrough: false, maxAge: '7d' }));
+const receiveFoodImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+}).single('image');
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -27,7 +55,7 @@ async function requireLogin(req, res, next) {
 
   try {
     const [accounts] = await db.execute(
-      `SELECT a.id, a.full_name, a.student_code, a.email, a.phone, a.default_address, a.role
+      `SELECT a.id, a.full_name, a.student_code, a.email, a.phone, a.default_address, a.gender, DATE_FORMAT(a.date_of_birth, '%Y-%m-%d') AS date_of_birth, a.role
        FROM auth_sessions s
        JOIN accounts a ON a.id = s.account_id
        WHERE s.token_hash = ? AND s.expires_at > NOW() AND a.is_active = 1`,
@@ -60,14 +88,14 @@ function isValidPhone(phone) {
 }
 
 app.post('/api/register', async (req, res) => {
-  const { full_name, student_code, email, phone, password } = req.body;
+  const { full_name, student_code, email, phone, password, gender, date_of_birth } = req.body;
 
   const fullName = (typeof full_name === 'string' ? full_name.trim() : '');
   const studentCode = (typeof student_code === 'string' ? student_code.trim() : '');
   const normalizedEmail = (typeof email === 'string' ? email.trim().toLowerCase() : '');
   const normalizedPhone = (typeof phone === 'string' ? phone.trim() : '');
 
-  if (!fullName || !studentCode || !normalizedEmail || !normalizedPhone || typeof password !== 'string') {
+  if (!validIdentity(fullName, studentCode, normalizedEmail) || !normalizedPhone || typeof password !== 'string') {
     return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
   }
   if (password.length < 8 || Buffer.byteLength(password) > 72) {
@@ -78,14 +106,18 @@ app.post('/api/register', async (req, res) => {
     return res.status(400).json({ message: 'Số điện thoại không hợp lệ' });
   }
 
+  if (!validGender(gender) || !validBirthDate(date_of_birth)) {
+    return res.status(400).json({ message: 'Giới tính hoặc ngày sinh không hợp lệ. Ngày sinh không được ở tương lai.' });
+  }
+
   try {
     // Dấu ? giúp truyền dữ liệu an toàn, không nối trực tiếp dữ liệu vào SQL.
     const [existingAccounts] = await db.execute(
       'SELECT student_code, email FROM accounts WHERE student_code = ? OR email = ?',
-      [studentCode, normalizedEmail]
+      [studentCode || null, normalizedEmail]
     );
 
-    if (existingAccounts.some((account) => account.student_code === studentCode)) {
+    if (studentCode && existingAccounts.some((account) => account.student_code === studentCode)) {
       return res.status(409).json({ message: 'Mã sinh viên đã tồn tại' });
     }
 
@@ -97,14 +129,14 @@ app.post('/api/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     await db.execute(
-      "INSERT INTO accounts (full_name, student_code, email, phone, password, role) VALUES (?, ?, ?, ?, ?, 'user')",
-      [fullName, studentCode, normalizedEmail, normalizedPhone, passwordHash]
+      "INSERT INTO accounts (full_name, student_code, email, phone, password, gender, date_of_birth, role) VALUES (?, ?, ?, ?, ?, ?, ?, 'user')",
+      [fullName, studentCode || null, normalizedEmail, normalizedPhone, passwordHash, gender, date_of_birth]
     );
 
     return res.status(201).json({ message: 'Đăng ký thành công' });
   } catch (error) {
     console.error('Lỗi đăng ký tài khoản:', error.message);
-    return res.status(500).json({ message: 'Lỗi server hoặc cơ sở dữ liệu' });
+    return accountError(res, error);
   }
 });
 
@@ -119,7 +151,7 @@ app.post('/api/login', async (req, res) => {
   try {
     // Chỉ tìm theo email để lấy password hash đã lưu trong database.
     const [accounts] = await db.execute(
-      'SELECT id, full_name, student_code, email, phone, default_address, password, role FROM accounts WHERE LOWER(email) = ? AND is_active = 1',
+      "SELECT id, full_name, student_code, email, phone, default_address, gender, DATE_FORMAT(date_of_birth, '%Y-%m-%d') AS date_of_birth, password, role FROM accounts WHERE LOWER(email) = ? AND is_active = 1",
       [normalizedEmail]
     );
 
@@ -149,6 +181,8 @@ app.post('/api/login', async (req, res) => {
         name: account.full_name,
         full_name: account.full_name,
         student_code: account.student_code,
+        gender: account.gender,
+        date_of_birth: account.date_of_birth,
         email: account.email,
         phone: account.phone,
         default_address: account.default_address,
@@ -188,6 +222,28 @@ app.get('/api/foods', async (req, res) => {
   }
 });
 
+app.post('/api/admin/food-images', requireLogin, requireAdmin, receiveFoodImage, async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ message: 'Vui lòng chọn ảnh.' });
+  try {
+    const image = sharp(req.file.buffer, { failOn: 'error', limitInputPixels: 40_000_000 }).rotate();
+    const metadata = await image.metadata();
+    if (!['jpeg', 'png', 'webp'].includes(metadata.format)) {
+      return res.status(415).json({ message: 'Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.' });
+    }
+    const filename = `${crypto.randomUUID()}.webp`;
+    await image.resize(800, 600, {
+      fit: 'contain', withoutEnlargement: true, background: { r: 255, g: 255, b: 255, alpha: 1 },
+    }).webp({ quality: 84 }).toFile(path.join(foodUploadRoot, filename));
+    const imageKey = `uploads/foods/${filename}`;
+    return res.status(201).json({ image_key: imageKey, image_url: `${req.protocol}://${req.get('host')}/${imageKey}` });
+  } catch (error) {
+    if (error.message?.includes('unsupported image format') || error.message?.includes('Input buffer')) {
+      return res.status(415).json({ message: 'Nội dung tệp không phải ảnh JPG, PNG hoặc WebP hợp lệ.' });
+    }
+    return next(error);
+  }
+});
+
 app.post('/api/admin/foods', requireLogin, requireAdmin, async (req, res) => {
   validateFood(req.body, true);
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
@@ -197,7 +253,6 @@ app.post('/api/admin/foods', requireLogin, requireAdmin, async (req, res) => {
   const stockQuantity = Number(req.body.stock_quantity);
   const imageKey = typeof req.body.image_key === 'string' ? req.body.image_key.trim() : '';
   const allowedCategories = ['Cơm', 'Mì', 'Đồ uống', 'Ăn vặt', 'Món khác'];
-  const allowedImageKeys = ['com-ga', 'com-suon', 'mi-xao-bo', 'bun-thit-nuong', 'pepsi', 'pho-bo', 'banh-mi'];
 
   if (!name || !description || !allowedCategories.includes(category)) {
     return res.status(400).json({ message: 'Tên món, danh mục và mô tả không hợp lệ' });
@@ -208,10 +263,6 @@ app.post('/api/admin/foods', requireLogin, requireAdmin, async (req, res) => {
   if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
     return res.status(400).json({ message: 'Số lượng món ăn phải là số nguyên không âm' });
   }
-  if (!allowedImageKeys.includes(imageKey)) {
-    return res.status(400).json({ message: 'Ảnh món ăn không hợp lệ' });
-  }
-
   try {
     const [result] = await db.execute(
       `INSERT INTO foods (name, category, price, description, stock_quantity, image_key)
@@ -237,7 +288,7 @@ app.put('/api/users/me', requireLogin, async (req, res) => {
   const phone = (typeof req.body.phone === 'string' ? req.body.phone.trim() : '');
   const defaultAddress = typeof req.body.defaultAddress === 'string' ? req.body.defaultAddress.trim() : '';
 
-  if (!fullName) {
+  if (!fullName || fullName.length > 100 || defaultAddress.length > 255) {
     return res.status(400).json({ message: 'Họ tên không được để trống' });
   }
 
@@ -245,19 +296,24 @@ app.put('/api/users/me', requireLogin, async (req, res) => {
     return res.status(400).json({ message: 'Số điện thoại không hợp lệ' });
   }
 
+  const gender = req.body.gender === undefined ? req.account.gender : req.body.gender;
+  const birthDate = req.body.date_of_birth === undefined ? req.account.date_of_birth : req.body.date_of_birth;
+  if ((gender !== null && !validGender(gender)) || (birthDate !== null && !validBirthDate(birthDate))) {
+    return res.status(400).json({ message: 'Giới tính hoặc ngày sinh không hợp lệ.' });
+  }
   try {
     await db.execute(
-      'UPDATE accounts SET full_name = ?, phone = ?, default_address = ? WHERE id = ?',
-      [fullName, phone, defaultAddress || null, req.account.id]
+      'UPDATE accounts SET full_name = ?, phone = ?, default_address = ?, gender = ?, date_of_birth = ? WHERE id = ?',
+      [fullName, phone, defaultAddress || null, gender, birthDate, req.account.id]
     );
     const [users] = await db.execute(
-      'SELECT id, full_name, student_code, email, phone, default_address, role, is_active FROM accounts WHERE id = ?',
+      "SELECT id, full_name, student_code, email, phone, default_address, gender, DATE_FORMAT(date_of_birth, '%Y-%m-%d') AS date_of_birth, role, is_active FROM accounts WHERE id = ?",
       [req.account.id]
     );
     return res.json({ message: 'Cập nhật thông tin thành công', user: users[0] });
   } catch (error) {
     console.error('Lỗi cập nhật profile:', error.message);
-    return res.status(500).json({ message: 'Không thể cập nhật thông tin' });
+    return accountError(res, error);
   }
 });
 
@@ -266,7 +322,7 @@ async function getOrders(whereSql = '', params = []) {
     `SELECT o.id, o.user_id, o.customer_name, o.phone,
             o.delivery_address, o.note, o.total_amount, o.status, o.created_at,
             o.order_type, o.pickup_at, o.payment_method, o.payment_status, o.paid_at,
-            o.cancellation_reason, o.stock_restored, o.handled_by
+            o.cancellation_reason, o.cancelled_at, o.stock_restored, o.handled_by
      FROM orders o
      ${whereSql}
      ORDER BY o.created_at DESC`,
@@ -286,6 +342,7 @@ async function getOrders(whereSql = '', params = []) {
     ...order,
     total_amount: Number(order.total_amount),
     allowed_statuses: nextStatuses(order),
+    is_terminal: ['completed', 'cancelled'].includes(order.status),
     items: items
       .filter((item) => item.order_id === order.id)
       .map((item) => ({ ...item, price: Number(item.price) })),
@@ -418,7 +475,7 @@ app.post('/api/admin/users', requireLogin, requireAdmin, async (req, res) => {
   const normalizedEmail = (typeof email === 'string' ? email.trim().toLowerCase() : '');
   const normalizedPhone = (typeof phone === 'string' ? phone.trim() : '');
 
-  if (!fullName || !studentCode || !normalizedEmail || !normalizedPhone || typeof password !== 'string' || Buffer.byteLength(password) < 8 || Buffer.byteLength(password) > 72) {
+  if (!validIdentity(fullName, studentCode, normalizedEmail) || !normalizedPhone || typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72) {
     return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
   }
 
@@ -432,7 +489,7 @@ app.post('/api/admin/users', requireLogin, requireAdmin, async (req, res) => {
       [studentCode, normalizedEmail]
     );
 
-    if (existingUsers.some((user) => user.student_code === studentCode)) {
+    if (studentCode && existingUsers.some((user) => user.student_code === studentCode)) {
       return res.status(409).json({ message: 'Mã sinh viên đã tồn tại' });
     }
 
@@ -444,7 +501,7 @@ app.post('/api/admin/users', requireLogin, requireAdmin, async (req, res) => {
 
     const [result] = await db.execute(
       "INSERT INTO accounts (full_name, student_code, email, phone, password, role) VALUES (?, ?, ?, ?, ?, 'user')",
-      [fullName, studentCode, normalizedEmail, normalizedPhone, passwordHash]
+      [fullName, studentCode || null, normalizedEmail, normalizedPhone, passwordHash]
     );
 
     return res.status(201).json({
@@ -459,7 +516,7 @@ app.post('/api/admin/users', requireLogin, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi thêm sinh viên:', error.message);
-    return res.status(500).json({ message: 'Lỗi server hoặc cơ sở dữ liệu' });
+    return accountError(res, error);
   }
 });
 
@@ -477,7 +534,7 @@ app.put('/api/admin/users/:id', requireLogin, requireAdmin, async (req, res) => 
     return res.status(400).json({ message: 'ID sinh viên không hợp lệ' });
   }
 
-  if (!fullName || !studentCode || !normalizedEmail || !normalizedPhone) {
+  if (!validIdentity(fullName, studentCode, normalizedEmail) || !normalizedPhone) {
     return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
   }
 
@@ -497,7 +554,7 @@ app.put('/api/admin/users/:id', requireLogin, requireAdmin, async (req, res) => 
       [studentCode, normalizedEmail, userId]
     );
 
-    if (existingUsers.some((user) => user.student_code === studentCode)) {
+    if (studentCode && existingUsers.some((user) => user.student_code === studentCode)) {
       return res.status(409).json({ message: 'Mã sinh viên đã tồn tại' });
     }
 
@@ -507,7 +564,7 @@ app.put('/api/admin/users/:id', requireLogin, requireAdmin, async (req, res) => 
 
     await db.execute(
       'UPDATE accounts SET full_name = ?, student_code = ?, email = ?, phone = ? WHERE id = ?',
-      [fullName, studentCode, normalizedEmail, normalizedPhone, userId]
+      [fullName, studentCode || null, normalizedEmail, normalizedPhone, userId]
     );
 
     return res.json({
@@ -522,7 +579,7 @@ app.put('/api/admin/users/:id', requireLogin, requireAdmin, async (req, res) => 
     });
   } catch (error) {
     console.error('Lỗi cập nhật sinh viên:', error.message);
-    return res.status(500).json({ message: 'Lỗi server hoặc cơ sở dữ liệu' });
+    return accountError(res, error);
   }
 });
 
@@ -533,7 +590,10 @@ app.delete('/api/admin/users/:id', requireLogin, requireAdmin, (req, res) => {
 
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
-  const status = error.status || (error.code === 'ER_DUP_ENTRY' ? 409 : 500);
+  if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ message: 'Ảnh không được vượt quá 5 MB.' });
+  }
+  const status = error.status || (error.code === 'ER_DUP_ENTRY' ? 409 : error instanceof multer.MulterError ? 400 : 500);
   res.status(status).json({ message: error.status ? error.message : status === 409 ? 'Dữ liệu đã tồn tại.' : 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
 });
 

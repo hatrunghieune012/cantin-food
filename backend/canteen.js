@@ -7,11 +7,16 @@ const fail = (message, status = 400) => { throw new ApiError(status, message); }
 const integer = (value, min = 1, max = 2147483647) => Number.isSafeInteger(value) && value >= min && value <= max;
 const text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
 const categories = ['Cơm', 'Mì', 'Đồ uống', 'Ăn vặt', 'Món khác'];
-const imageKeys = ['com-ga', 'com-suon', 'mi-xao-bo', 'bun-thit-nuong', 'pepsi', 'pho-bo', 'banh-mi'];
+const imageKeys = [
+  'com-ga', 'com-suon', 'mi-xao-bo', 'bun-thit-nuong', 'pepsi', 'pho-bo', 'banh-mi',
+  'com-tam-suon-bi-cha', 'com-ga-xoi-mo', 'com-chien-duong-chau', 'com-suon-nuong',
+  'com-bo-luc-lac', 'com-ca-kho-to', 'com-thit-kho-trung', 'com-ga-ro-ti',
+];
+const validImageKey = value => imageKeys.includes(value) || /^uploads\/foods\/[a-f0-9-]+\.webp$/.test(value);
 
 function validateFood(body, creating = false) {
   if (!text(body.name, 150) || !text(body.description, 500) || !categories.includes(body.category)
-    || !imageKeys.includes(body.image_key) || !integer(body.price, 1, 999999999999)
+    || !validImageKey(body.image_key) || !integer(body.price, 1, 999999999999)
     || (creating && !integer(body.stock_quantity, 0))
     || (!creating && typeof body.is_active !== 'boolean')) fail('Thông tin món ăn không hợp lệ.');
 }
@@ -105,7 +110,7 @@ module.exports = function installCanteen(app, db, requireLogin, requireAdmin, ge
     if (b.note != null && (typeof b.note !== 'string' || b.note.length > 500)) fail('Ghi chú tối đa 500 ký tự.');
     if (typeof b.requestKey !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(b.requestKey)) fail('Thiếu mã chống tạo đơn trùng.');
     if (counter && b.paymentMethod !== 'cash') fail('Vui lòng xác nhận đã nhận tiền mặt.');
-    if (counter && !integer(b.expectedTotal, 1, 999999999999)) fail('Tổng tiền xác nhận không hợp lệ.');
+    if (!integer(b.expectedTotal, 1, 999999999999)) fail('Tổng tiền xác nhận không hợp lệ.');
     const pickup = counter ? null : new Date(b.pickupAt);
     if (!counter && (!b.pickupAt || !Number.isFinite(pickup.getTime()))) fail('Thời gian nhận không hợp lệ.');
     const requestKey = `${req.account.id}:${b.requestKey}`;
@@ -149,7 +154,7 @@ module.exports = function installCanteen(app, db, requireLogin, requireAdmin, ge
           [id, foodId, food.name, food.price, quantity]
         );
       }
-      if (counter && total !== b.expectedTotal) fail('Giá món đã thay đổi. Hãy làm mới món và xác nhận lại số tiền khách trả.', 409);
+      if (total !== b.expectedTotal) fail('Giá món đã thay đổi. Hãy làm mới món và xác nhận lại tổng tiền.', 409);
       await connection.execute('UPDATE orders SET total_amount=? WHERE id=?', [total, id]);
       await connection.commit();
     } catch (error) {
@@ -205,11 +210,12 @@ module.exports = function installCanteen(app, db, requireLogin, requireAdmin, ge
         if (completed && req.body.paymentMethod !== 'cash') fail('Phải xác nhận nhận tiền mặt trước khi giao món.');
         await connection.execute(
           `UPDATE orders SET status=?, cancellation_reason=?, stock_restored=?,
-           payment_method=?, payment_status=?, paid_at=?, handled_by=? WHERE id=?`,
+           payment_method=?, payment_status=?, paid_at=?, handled_by=?,
+           cancelled_at=CASE WHEN ? = 'cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END WHERE id=?`,
           [req.body.status, cancelled ? (student ? 'student_cancelled' : reason.trim()) : null,
             restore ? 1 : order.stock_restored, completed ? 'cash' : order.payment_method,
             completed ? 'paid' : order.payment_status, completed ? new Date() : order.paid_at,
-            student ? order.handled_by : req.account.id, id]
+            student ? order.handled_by : req.account.id, req.body.status, id]
         );
       }
       await connection.commit();
@@ -220,36 +226,6 @@ module.exports = function installCanteen(app, db, requireLogin, requireAdmin, ge
   app.put('/api/admin/orders/:id/status', requireLogin, requireAdmin, route(changeStatus));
   app.put('/api/staff/orders/:id/status', requireLogin, staff, route(changeStatus));
   app.put('/api/orders/:id/status', requireLogin, route(changeStatus));
-
-  app.get('/api/tables', requireLogin, route(async (req, res) => {
-    const management = ['staff', 'admin'].includes(req.account.role);
-    const [tables] = await db.query(`SELECT * FROM canteen_tables ${management ? '' : 'WHERE is_active=1'} ORDER BY area, code`);
-    res.json({ tables });
-  }));
-  const tableBody = b => {
-    if (!text(b.code, 30) || !text(b.area, 100) || !integer(b.seats, 1, 100)
-      || !['available', 'occupied', 'unknown'].includes(b.status) || typeof b.is_active !== 'boolean') fail('Thông tin bàn không hợp lệ.');
-  };
-  app.post('/api/tables', requireLogin, staff, route(async (req, res) => {
-    tableBody(req.body);
-    const b = req.body;
-    const [result] = await db.execute(
-      'INSERT INTO canteen_tables(code,area,seats,status,is_active,updated_by) VALUES (?,?,?,?,?,?)',
-      [b.code.trim(), b.area.trim(), b.seats, b.status, b.is_active, req.account.id]
-    );
-    res.status(201).json({ id: result.insertId });
-  }));
-  app.put('/api/tables/:id', requireLogin, staff, route(async (req, res) => {
-    tableBody(req.body);
-    const id = Number(req.params.id), b = req.body;
-    if (!integer(id)) fail('Mã bàn không hợp lệ.');
-    const [result] = await db.execute(
-      'UPDATE canteen_tables SET code=?,area=?,seats=?,status=?,is_active=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
-      [b.code.trim(), b.area.trim(), b.seats, b.status, b.is_active, req.account.id, id]
-    );
-    if (!result.affectedRows) fail('Không tìm thấy bàn.', 404);
-    res.json({ message: 'Đã cập nhật bàn.' });
-  }));
 
   app.put('/api/admin/users/:id/access', requireLogin, requireAdmin, route(async (req, res) => {
     const id = Number(req.params.id), b = req.body;

@@ -1,9 +1,15 @@
+import { readSession, saveSession, readLocal, saveLocal } from './src/storage';
+import { pendingOrder } from './src/orderJournal';
+import { onUnauthorized } from './src/api';
+import { apiFetch } from './src/api';
+import Interactive from './src/components/Interactive';
+import Icon, { IconName } from './src/components/Icon';
+import { colors } from './src/styles/theme';
 import StaffScreen from './src/screens/StaffScreen';
-import TablesScreen from './src/screens/TablesScreen';
 import { apiUrl as buildApiUrl } from './src/api';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ManHinhDangNhap from './src/screens/LoginScreen';
 import ManHinhDangKy from './src/screens/RegisterScreen';
 import ManHinhTrangChu from './src/screens/HomeScreen';
@@ -15,64 +21,102 @@ import ManHinhAdmin from './src/screens/AdminScreen';
 import { layHinhAnhMonAn } from './src/data/foods';
 import type { DonHang, MonAn, MonTrongGioHang, NguoiDung, TenManHinh } from './src/types';
 
-const KHOA_PHIEN_DANG_NHAP = 'smart-canteen-user';
-
-function layNguoiDungDaLuu(): NguoiDung | null {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-
-  try {
-    // sessionStorage tách phiên đăng nhập theo từng tab trình duyệt.
-    const duLieu = window.sessionStorage.getItem(KHOA_PHIEN_DANG_NHAP);
-    if (!duLieu) return null;
-    const nguoiDung = JSON.parse(duLieu) as Partial<NguoiDung>;
-    if (!nguoiDung.id || !nguoiDung.hoTen || !nguoiDung.email || !nguoiDung.role || !nguoiDung.token) return null;
-    return nguoiDung as NguoiDung;
-  } catch {
-    return null;
-  }
-}
-
-function luuNguoiDung(nguoiDung: NguoiDung | null) {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-
-  try {
-    if (nguoiDung) {
-      const duLieuAnToan = {
-        id: nguoiDung.id,
-        hoTen: nguoiDung.hoTen,
-        maSinhVien: nguoiDung.maSinhVien,
-        email: nguoiDung.email,
-        phone: nguoiDung.phone,
-        defaultAddress: nguoiDung.defaultAddress,
-        role: nguoiDung.role,
-        token: nguoiDung.token,
-      };
-      window.sessionStorage.setItem(KHOA_PHIEN_DANG_NHAP, JSON.stringify(duLieuAnToan));
-    } else {
-      window.sessionStorage.removeItem(KHOA_PHIEN_DANG_NHAP);
-    }
-  } catch {
-    // Trình duyệt có thể chặn sessionStorage ở chế độ riêng tư; đăng nhập vẫn hoạt động trong state của tab hiện tại.
-  }
-}
-
 export default function UngDung() {
   const { width } = useWindowDimensions();
-  const laDesktop = width >= 760;
-  const [phienDangNhapBanDau] = useState<NguoiDung | null>(() => layNguoiDungDaLuu());
-  const [manHinh, setManHinh] = useState<TenManHinh>(() => {
-    if (!phienDangNhapBanDau) return 'dangNhap';
-    return phienDangNhapBanDau.role === 'admin' ? 'admin' : phienDangNhapBanDau.role === 'staff' ? 'staff' : 'trangChu';
-  });
+  const laDesktop = width >= 1000;
+  const [booting, setBooting] = useState(true);
+  const [storageError, setStorageError] = useState('');
+  const [cartReady, setCartReady] = useState(false);
+  const [manHinh, setManHinh] = useState<TenManHinh>('dangNhap');
   const [nguoiDung, setNguoiDung] = useState<NguoiDung[]>([]);
   const [monDangChon, setMonDangChon] = useState<MonAn | null>(null);
   const [danhSachMonAn, setDanhSachMonAn] = useState<MonAn[]>([]);
   const [loiMonAn, setLoiMonAn] = useState('');
   const [dangTaiMon, setDangTaiMon] = useState(false);
-  const [gioHang, setGioHang] = useState<MonTrongGioHang[]>([]);
+  const [gioHang, setCartState] = useState<MonTrongGioHang[]>([]);
   const [donHang, setDonHang] = useState<DonHang[]>([]);
-  const [nguoiDungHienTai, setNguoiDungHienTai] = useState<NguoiDung | null>(phienDangNhapBanDau);
+  const [nguoiDungHienTai, setNguoiDungHienTai] = useState<NguoiDung | null>(null);
   const [hienMenuTaiKhoan, setHienMenuTaiKhoan] = useState(false);
+  const cartRef = useRef(gioHang);
+  const userRef = useRef(nguoiDungHienTai);
+  userRef.current = nguoiDungHienTai;
+  function setGioHang(value: MonTrongGioHang[] | ((old: MonTrongGioHang[]) => MonTrongGioHang[])) {
+    const user = nguoiDungHienTai;
+    if (!user || !cartReady) return;
+    void (async () => {
+      const pending = await pendingOrder(user.id, 'online');
+      if (userRef.current?.id !== user.id) return;
+      if (pending && (typeof value === 'function' || value.length > 0)) {
+        setStorageError('Có đơn chưa xác định kết quả. Mở Giỏ hàng để kiểm tra trước khi sửa giỏ.'); return;
+      }
+      const next = typeof value === 'function' ? value(cartRef.current) : value;
+      cartRef.current = next; setCartState(next);
+      await saveLocal(`cart:${user.id}`, next.map(({ hinhAnh, ...item }) => item));
+      setStorageError('');
+    })().catch(() => setStorageError('Không lưu được giỏ hàng trên thiết bị. Vui lòng kiểm tra dung lượng/quyền lưu trữ.'));
+  }
+  useEffect(() => {
+    let active = true;
+    readSession().then(user => {
+      if (!active) return;
+      setNguoiDungHienTai(user);
+      setManHinh(user?.role === 'admin' ? 'admin' : user?.role === 'staff' ? 'staff' : user ? 'trangChu' : 'dangNhap');
+    }).catch(() => setStorageError('Không đọc được phiên đã lưu. Vui lòng đăng nhập lại.'))
+      .finally(() => { if (active) setBooting(false); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setCartReady(false); cartRef.current = []; setCartState([]);
+    const id = nguoiDungHienTai?.id;
+    if (!id) return;
+    Promise.all([readLocal<MonTrongGioHang[]>(`cart:${id}`), pendingOrder(id, 'online')]).then(([saved, pending]) => {
+      if (!active) return;
+      const cart = (saved || []).map(item => ({ ...item, hinhAnh: layHinhAnhMonAn(item.maHinhAnh || '') }));
+      cartRef.current = cart; setCartState(cart); setCartReady(true);
+      if (pending && nguoiDungHienTai.role === 'user') setManHinh('gioHang');
+    }).catch(() => { if (active) setStorageError('Không đọc được giỏ/giao dịch đã lưu. Hãy mở lại ứng dụng; chưa thể đặt đơn mới.'); });
+    return () => { active = false; };
+  }, [nguoiDungHienTai?.id]);
+  useEffect(() => onUnauthorized(token => {
+    if (token !== userRef.current?.token) return;
+    void saveSession(null).catch(() => setStorageError('Không xóa được phiên trên thiết bị.'));
+    setNguoiDungHienTai(null); setDonHang([]); setManHinh('dangNhap');
+  }), []);
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (hienMenuTaiKhoan) { setHienMenuTaiKhoan(false); return true; }
+      if (['chiTiet', 'gioHang', 'caNhan', 'thucDon', 'dangKy'].includes(manHinh)) {
+        setManHinh(manHinh === 'dangKy' ? 'dangNhap' : manHinh === 'chiTiet' ? 'thucDon' : 'trangChu'); return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [manHinh, hienMenuTaiKhoan]);
+  function luuNguoiDung(user: NguoiDung | null) {
+    void saveSession(user).catch(() => setStorageError('Không lưu được phiên trên thiết bị.'));
+  }
+
+
+  const [cartNotice, setCartNotice] = useState('');
+  const previousCart = useRef(gioHang);
+  useEffect(() => {
+    const added = gioHang.find(item => item.soLuong > (previousCart.current.find(old => old.ma === item.ma)?.soLuong || 0));
+    if (added) setCartNotice(`Đã thêm ${added.ten} vào giỏ hàng.`);
+    previousCart.current = gioHang;
+  }, [gioHang]);
+  useEffect(() => {
+    if (!cartNotice) return;
+    const timer = setTimeout(() => setCartNotice(''), 3500);
+    return () => clearTimeout(timer);
+  }, [cartNotice, gioHang]);
+  useEffect(() => { setHienMenuTaiKhoan(false); }, [manHinh]);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !hienMenuTaiKhoan) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setHienMenuTaiKhoan(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [hienMenuTaiKhoan]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -85,25 +129,27 @@ export default function UngDung() {
   useEffect(() => {
     if (!nguoiDungHienTai?.token) return;
     const apiUrl = buildApiUrl('/api/me');
-    fetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
-      .then((response) => {
-        if (response.status !== 401) return;
-        luuNguoiDung(null);
-        setNguoiDungHienTai(null);
-        setGioHang([]);
-        setDonHang([]);
-        setManHinh('dangNhap');
-        if (Platform.OS === 'web' && typeof window !== 'undefined') window.history.replaceState({}, '', '/');
+    apiFetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
+      .then(async response => {
+        if (!response.ok) return;
+        const { user } = await response.json();
+        if (!user) return;
+        setNguoiDungHienTai(current => current && current.id === user.id && current.token === nguoiDungHienTai.token
+          ? { ...current, gender: user.gender, dateOfBirth: user.date_of_birth } : current);
       })
       .catch(() => undefined);
   }, [nguoiDungHienTai?.token]);
 
+  const catalogVersion = useRef(0);
   async function taiDanhSachMonAn() {
+    const version = ++catalogVersion.current;
+    const token = nguoiDungHienTai?.token;
     setDangTaiMon(true);
     const apiUrl = buildApiUrl(nguoiDungHienTai?.role === 'admin' ? '/api/admin/foods' : '/api/foods');
     try {
-      const response = await fetch(apiUrl, { headers: nguoiDungHienTai ? { Authorization: `Bearer ${nguoiDungHienTai.token}` } : {} });
+      const response = await apiFetch(apiUrl, { headers: nguoiDungHienTai ? { Authorization: `Bearer ${nguoiDungHienTai.token}` } : {} });
       const data = await response.json();
+      if (version !== catalogVersion.current || token !== userRef.current?.token) return;
       if (!response.ok || !Array.isArray(data.foods)) throw new Error(data.message || 'Không thể tải món ăn');
       setLoiMonAn('');
       setDanhSachMonAn(data.foods.map((food: any) => {
@@ -121,8 +167,9 @@ export default function UngDung() {
         } as MonAn;
       }));
     } catch {
+      if (version !== catalogVersion.current || token !== userRef.current?.token) return;
       setLoiMonAn('Không thể tải thực đơn. Vui lòng thử lại.');
-    } finally { setDangTaiMon(false); }
+    } finally { if (version === catalogVersion.current) setDangTaiMon(false); }
   }
 
   useEffect(() => { taiDanhSachMonAn(); }, [nguoiDungHienTai?.role, nguoiDungHienTai?.token, manHinh]);
@@ -130,7 +177,7 @@ export default function UngDung() {
   useEffect(() => {
     if (!nguoiDungHienTai || nguoiDungHienTai.role !== 'user') return;
     const apiUrl = buildApiUrl('/api/orders');
-    fetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
+    apiFetch(apiUrl, { headers: { Authorization: `Bearer ${nguoiDungHienTai.token}` } })
       .then(async (response) => {
         if (!response.ok) return;
         const data = await response.json();
@@ -153,12 +200,12 @@ export default function UngDung() {
     const token = nguoiDungHienTai?.token;
     if (token) {
       const apiUrl = buildApiUrl('/api/logout');
-      fetch(apiUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
+      apiFetch(apiUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => undefined);
     }
     luuNguoiDung(null);
     setHienMenuTaiKhoan(false);
     setNguoiDungHienTai(null);
-    setGioHang([]);
+    cartRef.current = []; setCartState([]);
     setDonHang([]);
     setManHinh('dangNhap');
     if (Platform.OS === 'web' && typeof window !== 'undefined') window.history.replaceState({}, '', '/');
@@ -180,9 +227,11 @@ export default function UngDung() {
     });
   }
 
+  if (booting || (nguoiDungHienTai && !cartReady)) return <View style={{ padding: 30 }}><Text>{storageError || 'Đang khôi phục dữ liệu…'}</Text></View>;
+
   if (manHinh === 'dangNhap') {
-    return <><StatusBar style="dark" /><ManHinhDangNhap khiDangNhap={(taiKhoan) => {
-      luuNguoiDung(taiKhoan);
+    return <><StatusBar style="dark" /><ManHinhDangNhap khiDangNhap={async (taiKhoan) => {
+      await saveSession(taiKhoan);
       setNguoiDungHienTai(taiKhoan);
       const manHinhSauDangNhap = taiKhoan.role === 'admin' ? 'admin' : taiKhoan.role === 'staff' ? 'staff' : 'trangChu';
       setManHinh(manHinhSauDangNhap);
@@ -217,99 +266,107 @@ export default function UngDung() {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <View style={styles.headerInner}>
-          <Pressable style={styles.brand} onPress={() => setManHinh('trangChu')}>
+          <Interactive style={styles.brand} onPress={() => setManHinh('trangChu')}>
             <View style={styles.logo}><Text style={styles.logoText}>AC</Text></View>
             <Text style={styles.brandText}>APP <Text style={styles.orange}>CANTEEN</Text></Text>
-          </Pressable>
+          </Interactive>
 
           {laDesktop && (
             <View style={styles.desktopNav}>
-              <NutDieuHuong icon="⌂" label="Trang chủ" dangChon={manHinh === 'trangChu'} khiNhan={() => setManHinh('trangChu')} />
-              <NutDieuHuong icon="▦" label="Chỗ ngồi" dangChon={manHinh === 'choNgoi'} khiNhan={() => setManHinh('choNgoi')} />
-              <NutDieuHuong icon="♨" label="Thực đơn" dangChon={manHinh === 'thucDon' || manHinh === 'chiTiet'} khiNhan={() => setManHinh('thucDon')} />
-              <NutDieuHuong icon="🛒" label="Giỏ hàng" dangChon={manHinh === 'gioHang'} khiNhan={() => setManHinh('gioHang')} soLuong={gioHang.reduce((tong, mon) => tong + mon.soLuong, 0)} />
+              <NutDieuHuong icon="home" label="Trang chủ" dangChon={manHinh === 'trangChu'} khiNhan={() => setManHinh('trangChu')} />
+              <NutDieuHuong icon="menu" label="Thực đơn" dangChon={manHinh === 'thucDon' || manHinh === 'chiTiet'} khiNhan={() => setManHinh('thucDon')} />
+              <NutDieuHuong icon="cart" label="Giỏ hàng" dangChon={manHinh === 'gioHang'} khiNhan={() => setManHinh('gioHang')} soLuong={gioHang.reduce((tong, mon) => tong + mon.soLuong, 0)} />
             </View>
           )}
 
-          <Pressable style={styles.accountButton} onPress={() => setHienMenuTaiKhoan((giaTri) => !giaTri)}>
+          <Interactive accessibilityLabel="Mở menu tài khoản" accessibilityState={{ expanded: hienMenuTaiKhoan }} style={styles.accountButton} onPress={() => setHienMenuTaiKhoan((giaTri) => !giaTri)}>
             <View style={styles.avatar}><Text style={styles.avatarText}>{chuCai}</Text></View>
             {laDesktop && <><Text style={styles.accountName} numberOfLines={1}>{ten}</Text><Text style={styles.chevron}>⌄</Text></>}
-          </Pressable>
+          </Interactive>
         </View>
       </View>
 
       {hienMenuTaiKhoan && (
-        <View style={styles.accountMenu}>
+        <><Interactive accessibilityLabel="Đóng menu tài khoản" style={styles.menuBackdrop} onPress={() => setHienMenuTaiKhoan(false)} />
+        <View style={[styles.accountMenu, { right: Math.max(16, (width - 1280) / 2 + 24), width: Math.min(280, width - 32) }]}>
+          <Text style={styles.menuCaption}>TÀI KHOẢN CỦA BẠN</Text>
           <Text style={styles.menuName}>{ten}</Text>
           <Text style={styles.menuEmail}>{nguoiDungHienTai?.email}</Text>
           <View style={styles.divider} />
-          <Pressable style={styles.menuItem} onPress={() => { setHienMenuTaiKhoan(false); setManHinh('caNhan'); }}><Text style={styles.menuItemText}>♙  Thông tin cá nhân</Text></Pressable>
-          <Pressable style={styles.menuItem} onPress={dangXuat}><Text style={styles.logoutText}>↪  Đăng xuất</Text></Pressable>
-        </View>
+          <Interactive style={styles.menuItem} onPress={() => { setHienMenuTaiKhoan(false); setManHinh('caNhan'); }}><Icon name="user" /><Text style={styles.menuItemText}>Thông tin cá nhân</Text></Interactive>
+          <Interactive style={styles.menuItem} onPress={dangXuat}><Text style={styles.logoutText}>Đăng xuất</Text></Interactive>
+        </View></>
       )}
 
+      {storageError !== '' && <Text accessibilityRole="alert" style={{ padding: 12, color: colors.red }}>{storageError}</Text>}
       <View style={styles.content}>
-        {dangTaiMon && <Text style={{ padding: 10 }}>Đang tải thực đơn…</Text>}
-        {loiMonAn !== '' && <Pressable onPress={taiDanhSachMonAn}><Text style={{ padding: 10, color: '#B42318' }}>{loiMonAn} Nhấn để tải lại.</Text></Pressable>}
-        {manHinh === 'choNgoi' && nguoiDungHienTai && <TablesScreen token={nguoiDungHienTai.token} />}
-        {manHinh === 'trangChu' && <ManHinhTrangChu nguoiDungHienTai={nguoiDungHienTai} danhSachMonAn={danhSachMonAn} khiChonMon={chonMon} khiXemThucDon={() => setManHinh('thucDon')} gioHang={gioHang} khiThemVaoGio={themMonVaoGio} />}
-        {manHinh === 'thucDon' && <ManHinhThucDon danhSachMonAn={danhSachMonAn} khiChonMon={chonMon} gioHang={gioHang} khiThemVaoGio={themMonVaoGio} />}
+        {manHinh === 'trangChu' && <ManHinhTrangChu nguoiDungHienTai={nguoiDungHienTai} danhSachMonAn={danhSachMonAn} khiChonMon={chonMon} khiXemThucDon={() => setManHinh('thucDon')} gioHang={gioHang} khiThemVaoGio={themMonVaoGio} loading={dangTaiMon} error={loiMonAn} onRetry={taiDanhSachMonAn} />}
+        {manHinh === 'thucDon' && <ManHinhThucDon danhSachMonAn={danhSachMonAn} khiChonMon={chonMon} gioHang={gioHang} khiThemVaoGio={themMonVaoGio} loading={dangTaiMon} error={loiMonAn} onRetry={taiDanhSachMonAn} />}
         {manHinh === 'chiTiet' && <ManHinhChiTietMon monAn={monDangChon} gioHang={gioHang} setGioHang={setGioHang} khiQuayLai={() => setManHinh('thucDon')} khiXemGioHang={() => setManHinh('gioHang')} />}
         {manHinh === 'gioHang' && <ManHinhGioHang gioHang={gioHang} setGioHang={setGioHang} nguoiDungHienTai={nguoiDungHienTai} themDonHang={(donMoi) => setDonHang([donMoi, ...donHang])} khiDatHangThanhCong={taiDanhSachMonAn} khiVeTrangChu={() => setManHinh('thucDon')} />}
         {manHinh === 'caNhan' && <ManHinhCaNhan nguoiDungHienTai={nguoiDungHienTai} donHang={donHang} khiCapNhatNguoiDung={(nguoiDungMoi) => { luuNguoiDung(nguoiDungMoi); setNguoiDungHienTai(nguoiDungMoi); }} khiDangXuat={dangXuat} />}
       </View>
 
+      {cartNotice !== '' && <View style={[styles.toast, { bottom: laDesktop ? 24 : 84, maxWidth: Math.min(480, width - 32) }]} accessibilityLiveRegion="polite">
+        <Text style={styles.toastText}>{cartNotice}</Text>
+        <Interactive accessibilityLabel="Xem giỏ hàng" style={styles.toastAction} onPress={() => { setManHinh('gioHang'); setCartNotice(''); }}><Text style={styles.toastLink}>Xem giỏ</Text></Interactive>
+      </View>}
       {!laDesktop && (
         <View style={styles.mobileNav}>
-          <NutDieuHuong icon="⌂" label="Trang chủ" dangChon={manHinh === 'trangChu'} khiNhan={() => setManHinh('trangChu')} mobile />
-          <NutDieuHuong icon="▦" label="Chỗ ngồi" dangChon={manHinh === 'choNgoi'} khiNhan={() => setManHinh('choNgoi')} mobile />
-          <NutDieuHuong icon="♨" label="Thực đơn" dangChon={manHinh === 'thucDon' || manHinh === 'chiTiet'} khiNhan={() => setManHinh('thucDon')} mobile />
-          <NutDieuHuong icon="🛒" label="Giỏ hàng" dangChon={manHinh === 'gioHang'} khiNhan={() => setManHinh('gioHang')} soLuong={gioHang.reduce((tong, mon) => tong + mon.soLuong, 0)} mobile />
+          <NutDieuHuong icon="home" label="Trang chủ" dangChon={manHinh === 'trangChu'} khiNhan={() => setManHinh('trangChu')} mobile />
+          <NutDieuHuong icon="menu" label="Thực đơn" dangChon={manHinh === 'thucDon' || manHinh === 'chiTiet'} khiNhan={() => setManHinh('thucDon')} mobile />
+          <NutDieuHuong icon="cart" label="Giỏ hàng" dangChon={manHinh === 'gioHang'} khiNhan={() => setManHinh('gioHang')} soLuong={gioHang.reduce((tong, mon) => tong + mon.soLuong, 0)} mobile />
         </View>
       )}
     </View>
   );
 }
 
-function NutDieuHuong({ icon, label, dangChon, khiNhan, soLuong = 0, mobile = false }: { icon: string; label: string; dangChon: boolean; khiNhan: () => void; soLuong?: number; mobile?: boolean }) {
+function NutDieuHuong({ icon, label, dangChon, khiNhan, soLuong = 0, mobile = false }: { icon: IconName; label: string; dangChon: boolean; khiNhan: () => void; soLuong?: number; mobile?: boolean }) {
   return (
-    <Pressable style={[mobile ? styles.mobileNavButton : styles.navButton, dangChon && styles.navActive]} onPress={khiNhan}>
-      <View><Text style={[styles.navIcon, dangChon && styles.navTextActive]}>{icon}</Text>{soLuong > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{soLuong}</Text></View>}</View>
+    <Interactive accessibilityLabel={soLuong > 0 ? `${label}, ${soLuong} món trong giỏ` : label} accessibilityState={{ selected: dangChon }} style={[mobile ? styles.mobileNavButton : styles.navButton, dangChon && styles.navActive]} onPress={khiNhan}>
+      <View><Icon name={icon} color={dangChon ? colors.primary : colors.muted} />{soLuong > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{soLuong > 99 ? '99+' : soLuong}</Text></View>}</View>
       <Text style={[styles.navText, dangChon && styles.navTextActive]}>{label}</Text>
-    </Pressable>
+    </Interactive>
   );
 }
 
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: '#F7F8FA' },
-  header: { zIndex: 20, borderBottomWidth: 1, borderBottomColor: '#ECEEF1', backgroundColor: '#FFFFFF' },
-  headerInner: { width: '100%', maxWidth: 1240, height: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 18 },
+  menuBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 90, backgroundColor: 'rgba(20,30,40,0.12)' },
+  menuCaption: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.muted, marginBottom: 12 },
+  toast: { position: 'absolute', right: 16, zIndex: 50, borderRadius: 14, paddingHorizontal: 16, backgroundColor: '#26362D', flexDirection: 'row', gap: 12, alignItems: 'center', shadowOpacity: 0.12, shadowRadius: 12 },
+  toastText: { color: '#FFFFFF', flexShrink: 1, paddingVertical: 14, lineHeight: 20 },
+  toastAction: { minHeight: 48, justifyContent: 'center' },
+  toastLink: { color: '#FFE3B9', fontWeight: '700' },
+  app: { flex: 1, backgroundColor: colors.background },
+  header: { zIndex: 20, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: '#FFFFFF' },
+  headerInner: { width: '100%', maxWidth: 1280, minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 24 },
   brand: { flexDirection: 'row', alignItems: 'center' },
-  logo: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#FF6629' },
+  logo: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: colors.primary },
   logoText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
   brandText: { marginLeft: 9, color: '#171A1F', fontSize: 15, fontWeight: '900' },
-  orange: { color: '#F15F24' },
+  orange: { color: colors.primary },
   desktopNav: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  navButton: { minWidth: 112, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 22 },
-  navActive: { backgroundColor: '#FFF0E9' },
+  navButton: { minHeight: 46, minWidth: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 12 },
+  navActive: { backgroundColor: colors.soft },
   navIcon: { color: '#5D646E', fontSize: 18, textAlign: 'center' },
-  navText: { color: '#5D646E', fontSize: 13, fontWeight: '600' },
-  navTextActive: { color: '#F15F24', fontWeight: '800' },
-  accountButton: { maxWidth: 205, flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19, backgroundColor: '#FF6629' },
+  navText: { color: '#5D646E', fontSize: 12, fontWeight: '600' },
+  navTextActive: { color: colors.primary, fontWeight: '800' },
+  accountButton: { minHeight: 44, borderRadius: 24, paddingHorizontal: 6, maxWidth: 205, flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19, backgroundColor: colors.primary },
   avatarText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   accountName: { maxWidth: 130, marginLeft: 9, color: '#3B4149', fontSize: 13, fontWeight: '700' },
   chevron: { marginLeft: 7, color: '#636A74' },
-  content: { flex: 1 },
-  accountMenu: { position: 'absolute', zIndex: 100, top: 60, right: 18, width: 230, padding: 14, borderWidth: 1, borderColor: '#E8EAED', borderRadius: 14, backgroundColor: '#FFFFFF', shadowColor: '#20242A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 20, elevation: 10 },
-  menuName: { color: '#20242A', fontSize: 15, fontWeight: '800' },
-  menuEmail: { marginTop: 3, color: '#8A9099', fontSize: 12 },
-  divider: { height: 1, marginVertical: 11, backgroundColor: '#ECEEF1' },
-  menuItem: { paddingVertical: 10 },
+  content: { flex: 1, minHeight: 0 },
+  accountMenu: { position: 'absolute', zIndex: 100, top: 76, right: 18, width: 280, padding: 18, borderWidth: 1, borderColor: '#E8EAED', borderRadius: 14, backgroundColor: '#FFFFFF', shadowColor: colors.text, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 20, elevation: 10 },
+  menuName: { color: colors.text, fontSize: 15, fontWeight: '800' },
+  menuEmail: { marginTop: 6, color: colors.muted, fontSize: 12 },
+  divider: { height: 1, marginVertical: 11, backgroundColor: colors.border },
+  menuItem: { flexDirection: 'row', gap: 10, alignItems: 'center', minHeight: 48, paddingHorizontal: 10, borderRadius: 10 },
   menuItemText: { color: '#3E444C', fontSize: 14, fontWeight: '600' },
-  logoutText: { color: '#D85624', fontSize: 14, fontWeight: '700' },
-  mobileNav: { height: 66, flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#E5E7EB', backgroundColor: '#FFFFFF' },
-  mobileNavButton: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  badge: { position: 'absolute', top: -8, right: -11, minWidth: 17, height: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderRadius: 9, backgroundColor: '#F15F24' },
+  logoutText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  mobileNav: { minHeight: 72, paddingBottom: 6, paddingTop: 6, paddingHorizontal: 8, gap: 4, flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: '#FFFFFF' },
+  mobileNavButton: { minHeight: 52, borderRadius: 14, flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  badge: { position: 'absolute', top: -8, right: -11, minWidth: 17, height: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderRadius: 9, backgroundColor: colors.primary },
   badgeText: { color: '#FFFFFF', fontSize: 9, fontWeight: '800' },
 });

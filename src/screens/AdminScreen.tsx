@@ -1,9 +1,10 @@
+import * as ImagePicker from 'expo-image-picker';
+import { apiFetch } from '../api';
 import OrdersPanel from '../components/OrdersPanel';
 import AccountsPanel from '../components/AccountsPanel';
 import { Action, ui } from '../components/OperationsUI';
 import { request } from '../api';
 import CounterScreen from './CounterScreen';
-import TablesScreen from './TablesScreen';
 import { apiUrl as buildApiUrl } from '../api';
 import {
   Image,
@@ -19,7 +20,8 @@ import {
   View,
 } from 'react-native';
 import { useEffect, useState } from 'react';
-import { danhSachHinhAnh, dinhDangGia, layHinhAnhMonAn, type MaHinhAnh } from '../data/foods';
+import { danhSachHinhAnh, dinhDangGia, layHinhAnhMonAn } from '../data/foods';
+import FoodImage from '../components/FoodImage';
 import type { MonAn } from '../types';
 
 interface ThuocTinhAdmin {
@@ -32,7 +34,7 @@ interface ThuocTinhAdmin {
   dangTaiMon: boolean;
 }
 
-type TrangAdmin = 'tongQuan' | 'monAn' | 'nguoiDung' | 'donHang' | 'counter' | 'tables';
+type TrangAdmin = 'tongQuan' | 'monAn' | 'nguoiDung' | 'donHang' | 'counter';
 
 interface DashboardData {
   todayRevenue: number;
@@ -65,7 +67,7 @@ export default function ManHinhAdmin({ tenAdmin, token, danhSachMonAn, khiTaiLai
   async function taiDashboard() {
     const apiUrl = buildApiUrl('/api/admin/dashboard');
     try {
-      const response = await fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await apiFetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
       setDashboard(data); setDashboardError('');
@@ -88,7 +90,6 @@ export default function ManHinhAdmin({ tenAdmin, token, danhSachMonAn, khiTaiLai
               <MucMenu icon="⌂" label="Tổng quan" dangChon={trang === 'tongQuan'} khiNhan={() => setTrang('tongQuan')} />
               <MucMenu icon="♨" label="Quản lý món ăn" dangChon={trang === 'monAn'} khiNhan={() => setTrang('monAn')} />
               <MucMenu icon="♙" label="Quản lý người dùng" dangChon={trang === 'nguoiDung'} khiNhan={() => setTrang('nguoiDung')} />
-              <MucMenu icon="▦" label="Chỗ ngồi" dangChon={trang === 'tables'} khiNhan={() => setTrang('tables')} />
               <MucMenu icon="₫" label="Bán tại quầy" dangChon={trang === 'counter'} khiNhan={() => setTrang('counter')} />
               <MucMenu icon="▤" label="Quản lý đơn hàng" dangChon={trang === 'donHang'} khiNhan={() => setTrang('donHang')} />
             </View>
@@ -118,13 +119,12 @@ export default function ManHinhAdmin({ tenAdmin, token, danhSachMonAn, khiTaiLai
               <MucMenu icon="⌂" label="Tổng quan" dangChon={trang === 'tongQuan'} khiNhan={() => setTrang('tongQuan')} />
               <MucMenu icon="♨" label="Món ăn" dangChon={trang === 'monAn'} khiNhan={() => setTrang('monAn')} />
               <MucMenu icon="♙" label="Người dùng" dangChon={trang === 'nguoiDung'} khiNhan={() => setTrang('nguoiDung')} />
-              <MucMenu icon="▦" label="Chỗ ngồi" dangChon={trang === 'tables'} khiNhan={() => setTrang('tables')} />
               <MucMenu icon="₫" label="Bán tại quầy" dangChon={trang === 'counter'} khiNhan={() => setTrang('counter')} />
               <MucMenu icon="▤" label="Đơn hàng" dangChon={trang === 'donHang'} khiNhan={() => setTrang('donHang')} />
             </View>
           )}
 
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {trang === 'monAn' && <><Action onPress={khiTaiLaiMonAn}>Làm mới món ăn</Action>{dangTaiMon && <Text>Đang tải món…</Text>}{loiMonAn !== '' && <Text style={ui.error}>{loiMonAn}</Text>}</>}
             {trang === 'tongQuan' && <><Action onPress={taiDashboard}>Làm mới thống kê</Action>{dashboardLoading && <Text>Đang tải thống kê…</Text>}{dashboardError !== '' && <Text style={ui.error}>{dashboardError}</Text>}</>}
             {trang === 'tongQuan' && !dashboardLoading && !dashboardError && <TrangTongQuan tenAdmin={tenAdmin} laDesktop={laDesktop} laManHinhNho={laManHinhNho} danhSachMonAn={danhSachMonAn} dashboard={dashboard} />}
@@ -132,7 +132,6 @@ export default function ManHinhAdmin({ tenAdmin, token, danhSachMonAn, khiTaiLai
             {trang === 'nguoiDung' && <AccountsPanel token={token} />}
             {trang === 'donHang' && <OrdersPanel token={token} management onChanged={khiTaiLaiMonAn} />}
             {trang === 'counter' && <CounterScreen token={token} />}
-            {trang === 'tables' && <TablesScreen token={token} management />}
           </ScrollView>
         </View>
       </View>
@@ -178,7 +177,7 @@ function TrangTongQuan({ tenAdmin, laDesktop, laManHinhNho, danhSachMonAn, dashb
                 </View>
                 {monPhoBien.map((food) => (
                   <View key={food.id} style={styles.foodRow}>
-                    {food.local && <Image source={food.local.hinhAnh} style={styles.foodImage} />}
+                    {food.local && <FoodImage source={food.local.hinhAnh} name={food.name} drink={food.local.danhMuc === 'Đồ uống'} style={styles.foodImage} />}
                     <View style={styles.foodInfo}>
                       <Text style={styles.foodName}>{food.name}</Text>
                       <Text style={styles.foodPrice}>{dinhDangGia(food.price)}</Text>
@@ -251,12 +250,59 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
   const [moTa, setMoTa] = useState('');
   const [gia, setGia] = useState('');
   const [soLuong, setSoLuong] = useState('');
-  const [maHinhAnh, setMaHinhAnh] = useState<MaHinhAnh>('com-ga');
+  const [maHinhAnh, setMaHinhAnh] = useState('');
+  const [tenTepAnh, setTenTepAnh] = useState('');
+  const [dangTaiAnh, setDangTaiAnh] = useState(false);
   const [dangThem, setDangThem] = useState(false);
   const [loiThemMon, setLoiThemMon] = useState('');
 
   function dongFormThem() {
-    if (!dangThem) setHienFormThem(false);
+    if (!dangThem && !dangTaiAnh) setHienFormThem(false);
+  }
+
+  async function chonAnhTuMay() {
+    if (Platform.OS !== 'web') {
+      try {
+        const selected = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85, allowsMultipleSelection: false });
+        if (selected.canceled) return;
+        const asset = selected.assets[0];
+        if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) throw new Error('Ảnh không được vượt quá 5 MB.');
+        const type = asset.mimeType || 'image/jpeg';
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(type)) throw new Error('Chọn ảnh JPG, PNG hoặc WebP.');
+        const body = new FormData();
+        body.append('image', { uri: asset.uri, name: asset.fileName || 'food.jpg', type } as any);
+        setDangTaiAnh(true); setLoiThemMon('');
+        const response = await apiFetch(buildApiUrl('/api/admin/food-images'), { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Không thể tải ảnh.');
+        setMaHinhAnh(data.image_key); setTenTepAnh(asset.fileName || 'Ảnh từ thư viện');
+      } catch (error) { setLoiThemMon(error instanceof Error ? error.message : 'Không chọn được ảnh.'); }
+      finally { setDangTaiAnh(false); }
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        setLoiThemMon('Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.'); return;
+      }
+      if (file.size > 5 * 1024 * 1024) { setLoiThemMon('Ảnh không được vượt quá 5 MB.'); return; }
+      const body = new FormData(); body.append('image', file);
+      try {
+        setDangTaiAnh(true); setLoiThemMon('');
+        const response = await apiFetch(buildApiUrl('/api/admin/food-images'), { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Không thể tải ảnh lên.');
+        setMaHinhAnh(data.image_key);
+        setTenTepAnh(file.name);
+      } catch (error) {
+        setLoiThemMon(error instanceof Error ? error.message : 'Không thể tải ảnh lên.');
+      } finally { setDangTaiAnh(false); }
+    };
+    input.click();
   }
 
   async function themMonAn() {
@@ -274,12 +320,16 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
       setLoiThemMon('Số lượng phải là số nguyên không âm.');
       return;
     }
+    if (!maHinhAnh) {
+      setLoiThemMon('Vui lòng tải ảnh lên hoặc chọn một ảnh có sẵn.');
+      return;
+    }
 
     const apiUrl = buildApiUrl(editing ? `/api/admin/foods/${editing.ma}` : '/api/admin/foods');
     try {
       setDangThem(true);
       setLoiThemMon('');
-      const response = await fetch(apiUrl, {
+      const response = await apiFetch(apiUrl, {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -295,7 +345,7 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
       await khiTaiLai();
       await khiTaiLaiDashboard();
       setTenMon(''); setMoTa(''); setGia(''); setSoLuong('');
-      setLoaiMon('Cơm'); setMaHinhAnh('com-ga'); setHienFormThem(false);
+      setLoaiMon('Cơm'); setMaHinhAnh(''); setTenTepAnh(''); setHienFormThem(false);
     } catch {
       setLoiThemMon('Không thể kết nối đến server.');
     } finally {
@@ -313,7 +363,8 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
   }
   function edit(mon: MonAn) {
     setEditing(mon); setTenMon(mon.ten); setMoTa(mon.moTa); setGia(String(mon.gia));
-    setSoLuong(String(mon.soLuongTon)); setLoaiMon(mon.danhMuc); setMaHinhAnh(mon.maHinhAnh as MaHinhAnh);
+    setSoLuong(String(mon.soLuongTon)); setLoaiMon(mon.danhMuc); setMaHinhAnh(mon.maHinhAnh || 'com-ga');
+    setTenTepAnh('Ảnh hiện tại của món');
     setActive(mon.dangBan !== false); setLoiThemMon(''); setHienFormThem(true);
   }
   const visibleFoods = danhSachMonAn.filter(mon => mon.ten.toLowerCase().includes(search.toLowerCase())
@@ -334,7 +385,7 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
           <Text style={styles.title}>Quản lý món ăn</Text>
           <Text style={styles.welcome}>Thêm, sửa, ngừng bán và quản lý tồn kho</Text>
         </View>
-        <Pressable style={styles.primaryButton} onPress={() => { setLoiThemMon(''); setEditing(null); setTenMon(''); setMoTa(''); setGia(''); setSoLuong('0'); setActive(true); setHienFormThem(true); }}><Text style={styles.primaryButtonText}>＋ Thêm món ăn</Text></Pressable>
+        <Pressable style={styles.primaryButton} onPress={() => { setLoiThemMon(''); setEditing(null); setTenMon(''); setMoTa(''); setGia(''); setSoLuong('0'); setMaHinhAnh(''); setTenTepAnh(''); setActive(true); setHienFormThem(true); }}><Text style={styles.primaryButtonText}>＋ Thêm món ăn</Text></Pressable>
       </View>
       <View style={[styles.panel, styles.managementPanel]}>
         <View style={styles.filters}>
@@ -355,7 +406,7 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
             </View>
             {visibleFoods.map((mon) => (
               <View key={mon.ma} style={styles.manageRow}>
-                <View style={[styles.manageCell, styles.imageCell]}><Image source={mon.hinhAnh} style={styles.manageImage} /></View>
+                <View style={[styles.manageCell, styles.imageCell]}><FoodImage source={mon.hinhAnh} name={mon.ten} drink={mon.danhMuc === 'Đồ uống'} style={styles.manageImage} /></View>
                 <Text style={[styles.manageCell, styles.foodNameCell, styles.strong]}>{mon.ten}</Text>
                 <Text style={styles.manageCell}>{mon.danhMuc}</Text>
                 <Text style={styles.manageCell}>{dinhDangGia(mon.gia)}</Text>
@@ -380,12 +431,17 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
               <View><Text style={styles.formTitle}>{editing ? 'Sửa món ăn' : 'Thêm món ăn'}</Text><Text style={styles.formSubtitle}>Thông tin được lưu sau khi máy chủ xác nhận.</Text></View>
               <Pressable onPress={dongFormThem}><Text style={styles.closeButton}>×</Text></Pressable>
             </View>
-            <ScrollView contentContainerStyle={styles.foodFormBody}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.foodFormBody}>
               <Text style={styles.fieldLabel}>Ảnh món ăn</Text>
+              <View style={styles.uploadRow}>
+                {maHinhAnh ? <FoodImage source={layHinhAnhMonAn(maHinhAnh)} name="Ảnh xem trước" drink={loaiMon === 'Đồ uống'} style={styles.imagePreview} /> : <View style={[styles.imagePreview, styles.emptyPreview]}><Text style={styles.uploadHint}>Chưa chọn ảnh</Text></View>}
+                <View style={styles.uploadCopy}><Pressable disabled={dangTaiAnh} style={[styles.uploadButton, dangTaiAnh && styles.disabledButton]} onPress={chonAnhTuMay}><Text style={styles.primaryButtonText}>{dangTaiAnh ? 'Đang tải ảnh...' : 'Chọn hoặc thay ảnh'}</Text></Pressable><Text style={styles.uploadHint}>JPG, PNG, WebP · tối đa 5 MB · tự tối ưu khung 4:3</Text>{tenTepAnh !== '' && <Text style={styles.uploadSuccess}>✓ {tenTepAnh}</Text>}</View>
+              </View>
+              <Text style={styles.fieldLabel}>Hoặc chọn ảnh có sẵn</Text>
               <View style={styles.imageChoices}>
                 {danhSachHinhAnh.map((anh) => (
-                  <Pressable key={anh.ma} style={[styles.imageChoice, maHinhAnh === anh.ma && styles.imageChoiceActive]} onPress={() => setMaHinhAnh(anh.ma)}>
-                    <Image source={layHinhAnhMonAn(anh.ma)} style={styles.imageChoicePhoto} />
+                  <Pressable key={anh.ma} style={[styles.imageChoice, maHinhAnh === anh.ma && styles.imageChoiceActive]} onPress={() => { setMaHinhAnh(anh.ma); setTenTepAnh(`Ảnh có sẵn: ${anh.ten}`); }}>
+                    <FoodImage source={layHinhAnhMonAn(anh.ma)} name={anh.ten} style={styles.imageChoicePhoto} />
                     <Text style={styles.imageChoiceText}>{anh.ten}</Text>
                   </Pressable>
                 ))}
@@ -407,7 +463,7 @@ function TrangQuanLyMonAn({ danhSachMonAn, token, khiTaiLai, khiTaiLaiDashboard 
             </ScrollView>
             <View style={styles.formActions}>
               <Pressable style={styles.cancelButton} onPress={dongFormThem}><Text style={styles.cancelButtonText}>Hủy</Text></Pressable>
-              <Pressable style={[styles.primaryButton, dangThem && styles.disabledButton]} disabled={dangThem} onPress={themMonAn}><Text style={styles.primaryButtonText}>{dangThem ? 'Đang lưu...' : 'Lưu món ăn'}</Text></Pressable>
+              <Pressable style={[styles.primaryButton, (dangThem || dangTaiAnh) && styles.disabledButton]} disabled={dangThem || dangTaiAnh} onPress={themMonAn}><Text style={styles.primaryButtonText}>{dangThem ? 'Đang lưu...' : 'Lưu món ăn'}</Text></Pressable>
             </View>
           </View>
         </View>
@@ -491,7 +547,7 @@ const styles = StyleSheet.create({
   panelTitlePadded: { padding: 18, color: '#151B24', fontSize: 15, fontWeight: '800' },
   viewAll: { color: '#FF5A12', fontSize: 11, fontWeight: '700' },
   foodRow: { minHeight: 82, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EEF1F4' },
-  foodImage: { width: 58, height: 58, borderRadius: 9 },
+  foodImage: { width: 64, height: 48, borderRadius: 9 },
   foodInfo: { flex: 1, marginLeft: 14 },
   foodName: { color: '#242D39', fontSize: 14, fontWeight: '700' },
   foodPrice: { marginTop: 5, color: '#FF4D00', fontSize: 13, fontWeight: '800' },
@@ -532,7 +588,7 @@ const styles = StyleSheet.create({
   userNameCell: { width: 150 },
   emailCell: { width: 210 },
   phoneCell: { width: 135 },
-  manageImage: { width: 45, height: 45, borderRadius: 8 },
+  manageImage: { width: 60, height: 45, borderRadius: 8 },
   availability: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 5, backgroundColor: '#DDF7E6', color: '#148B42', fontSize: 9, fontWeight: '700' },
   outOfStock: { backgroundColor: '#FFE7E7', color: '#E03535' },
   lowStock: { backgroundColor: '#FFF4D9', color: '#D97706' },
@@ -557,9 +613,16 @@ const styles = StyleSheet.create({
   formInput: { height: 44, paddingHorizontal: 13, borderWidth: 1, borderColor: '#DCE3EB', borderRadius: 8, backgroundColor: '#FAFBFC', color: '#1F2937', fontSize: 13 },
   descriptionInput: { height: 78, paddingTop: 12, textAlignVertical: 'top' },
   imageChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  uploadRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 12 },
+  imagePreview: { width: 160, borderRadius: 10 },
+  emptyPreview: { aspectRatio: 4 / 3, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' },
+  uploadCopy: { flex: 1, alignItems: 'flex-start', gap: 7 },
+  uploadButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#FF5A12' },
+  uploadHint: { color: '#718096', fontSize: 11, lineHeight: 17 },
+  uploadSuccess: { color: '#168A45', fontSize: 11, fontWeight: '700' },
   imageChoice: { width: 76, padding: 5, borderWidth: 2, borderColor: 'transparent', borderRadius: 9, backgroundColor: '#F4F7FA' },
   imageChoiceActive: { borderColor: '#FF5A12', backgroundColor: '#FFF3ED' },
-  imageChoicePhoto: { width: '100%', height: 48, borderRadius: 6 },
+  imageChoicePhoto: { width: '100%', borderRadius: 6 },
   imageChoiceText: { marginTop: 4, color: '#526174', fontSize: 9, textAlign: 'center' },
   categoryChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   categoryChoice: { paddingHorizontal: 13, paddingVertical: 8, borderWidth: 1, borderColor: '#DCE3EB', borderRadius: 18, backgroundColor: '#FFFFFF' },

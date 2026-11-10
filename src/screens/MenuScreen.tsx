@@ -1,51 +1,27 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import TheMonAn from '../components/FoodCard';
+import { colors, pageLayout } from '../styles/theme';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import FoodCatalog, { CatalogState } from '../components/FoodCatalog';
 import type { MonAn, MonTrongGioHang } from '../types';
 
-interface ThuocTinhThucDon {
+interface ThuocTinhThucDon extends CatalogState {
   khiChonMon: (monAn: MonAn) => void;
   danhSachMonAn: MonAn[];
   gioHang: MonTrongGioHang[];
   khiThemVaoGio: (monAn: MonAn) => void;
 }
-const danhMuc = ['Tất cả', 'Cơm', 'Mì', 'Đồ uống', 'Ăn vặt', 'Món khác'] as const;
-
-export default function ManHinhThucDon({ khiChonMon, danhSachMonAn, gioHang, khiThemVaoGio }: ThuocTinhThucDon) {
-  const [muc, setMuc] = useState<(typeof danhMuc)[number]>('Tất cả');
-  const [tuKhoa, setTuKhoa] = useState('');
-  const monAn = useMemo(() => danhSachMonAn.filter((mon) => (muc === 'Tất cả' || mon.danhMuc === muc) && mon.ten.toLowerCase().includes(tuKhoa.toLowerCase().trim())), [danhSachMonAn, muc, tuKhoa]);
-
-  return (
-    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <Text style={styles.eyebrow}>APP CANTEEN</Text>
-      <Text style={styles.title}>Thực đơn hôm nay</Text>
-      <Text style={styles.subtitle}>Chọn món ngon, đặt nhanh và nhận tại căng tin.</Text>
-      <View style={styles.search}><Text style={styles.searchIcon}>⌕</Text><TextInput style={styles.input} value={tuKhoa} onChangeText={setTuKhoa} placeholder="Tìm trong thực đơn..." placeholderTextColor="#9AA0A9" /></View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
-        {danhMuc.map((item) => <Pressable key={item} style={[styles.category, muc === item && styles.active]} onPress={() => setMuc(item)}><Text style={[styles.categoryText, muc === item && styles.activeText]}>{item}</Text></Pressable>)}
-      </ScrollView>
-      <Text style={styles.count}>{monAn.length} món đang phục vụ</Text>
-      <View style={styles.grid}>{monAn.map((mon) => <TheMonAn key={mon.ma} monAn={mon} khiNhan={() => khiChonMon(mon)} khiThemVaoGio={() => khiThemVaoGio(mon)} soLuongTrongGio={gioHang.find((item) => item.ma === mon.ma)?.soLuong || 0} />)}</View>
-      {monAn.length === 0 && <Text style={styles.empty}>Không tìm thấy món ăn phù hợp.</Text>}
-    </ScrollView>
-  );
+export default function ManHinhThucDon({ khiChonMon, danhSachMonAn, gioHang, khiThemVaoGio, loading, error, onRetry }: ThuocTinhThucDon) {
+  const { width } = useWindowDimensions();
+  return <ScrollView contentContainerStyle={[styles.container, width >= 768 && { padding: 32 }]} keyboardShouldPersistTaps="handled">
+    <Text style={styles.eyebrow}>MỖI NGÀY MỘT BỮA NGON</Text>
+    <Text style={styles.title}>Thực đơn hôm nay</Text>
+    <Text style={styles.subtitle}>Chọn món bạn thích, nhận tại quầy vào giờ phù hợp.</Text>
+    <View style={{ marginTop: 24 }}><FoodCatalog foods={danhSachMonAn} cart={gioHang} onSelect={khiChonMon} onAdd={khiThemVaoGio} title="Khám phá món ăn" loading={loading} error={error} onRetry={onRetry} /></View>
+  </ScrollView>;
 }
 
 const styles = StyleSheet.create({
-  container: { width: '100%', maxWidth: 1240, alignSelf: 'center', padding: 20, paddingBottom: 40 },
-  eyebrow: { color: '#F15F24', fontSize: 12, fontWeight: '900', letterSpacing: 1.2 },
-  title: { marginTop: 6, color: '#20242A', fontSize: 32, fontWeight: '900' },
+  container: { ...pageLayout },
+  eyebrow: { color: colors.primary, fontSize: 12, fontWeight: '900', letterSpacing: 1.2 },
+  title: { marginTop: 6, color: colors.text, fontSize: 32, fontWeight: '900' },
   subtitle: { marginTop: 7, color: '#7A818B', fontSize: 15 },
-  search: { height: 50, flexDirection: 'row', alignItems: 'center', marginTop: 24, paddingHorizontal: 16, borderWidth: 1, borderColor: '#DEE1E6', borderRadius: 14, backgroundColor: '#FFFFFF' },
-  searchIcon: { marginRight: 10, fontSize: 24 },
-  input: { flex: 1, height: '100%', color: '#20242A', outlineStyle: 'none' } as never,
-  categories: { gap: 10, paddingVertical: 16 },
-  category: { paddingHorizontal: 20, paddingVertical: 11, borderWidth: 1, borderColor: '#E6E8EB', borderRadius: 22, backgroundColor: '#FFFFFF' },
-  active: { borderColor: '#FF6629', backgroundColor: '#FF6629' },
-  categoryText: { color: '#444A52', fontWeight: '700' },
-  activeText: { color: '#FFFFFF' },
-  count: { marginBottom: 14, color: '#7A818B', fontSize: 13 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', columnGap: 16 },
-  empty: { padding: 40, color: '#8A9099', textAlign: 'center' },
 });

@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { request } from '../api';
 import { Action, Field, ui } from './OperationsUI';
 
-interface Account { id: number; full_name: string; student_code: string; email: string; phone: string; role: 'user' | 'staff' | 'admin'; is_active: number | boolean }
+interface Account { id: number; full_name: string; student_code: string | null; email: string; phone: string; role: 'user' | 'staff' | 'admin'; is_active: number | boolean }
 export default function AccountsPanel({ token }: { token: string }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [search, setSearch] = useState('');

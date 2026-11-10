@@ -28,12 +28,20 @@ test('upgrade preserves all historical order fields and does not restore old can
     const [before] = await c.query('SELECT * FROM orders ORDER BY id');
     const [stockBefore] = await c.query('SELECT id,stock_quantity FROM foods ORDER BY id');
     await apply('007_canteen_operations.sql');
+    const [[accountBefore]] = await c.query('SELECT * FROM accounts WHERE id=1');
+    await apply('008_account_demographics.sql');
+    await apply('009_order_cancelled_at.sql');
+    const [[accountAfter]] = await c.query('SELECT * FROM accounts WHERE id=1');
+    for (const key of Object.keys(accountBefore)) assert.deepEqual(accountAfter[key], accountBefore[key], key);
+    assert.equal(accountAfter.gender, null);
+    assert.equal(accountAfter.date_of_birth, null);
     const [after] = await c.query('SELECT * FROM orders ORDER BY id');
     for (let i = 0; i < before.length; i++) {
       for (const key of Object.keys(before[i])) assert.deepEqual(after[i][key], before[i][key], key);
       assert.equal(after[i].order_type, 'legacy_delivery');
       assert.equal(after[i].payment_status, 'unknown');
       assert.equal(after[i].stock_restored, 0);
+      assert.equal(after[i].cancelled_at, null);
     }
     assert.deepEqual((await c.query('SELECT id,stock_quantity FROM foods ORDER BY id'))[0], stockBefore);
     console.log('Upgrade test database (retained):', database);

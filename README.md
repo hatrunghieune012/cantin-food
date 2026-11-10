@@ -1,10 +1,12 @@
 # App Canteen
 
-Ứng dụng căn tin trường học: sinh viên đặt trước và nhận tại quầy; nhân viên xử lý đơn, bán trực tiếp bằng tiền mặt và cập nhật bàn; quản trị viên quản lý món, tài khoản và thống kê.
+Ứng dụng căn tin trường học: sinh viên đặt trước và nhận tại quầy; nhân viên xử lý đơn, bán trực tiếp bằng tiền mặt; quản trị viên quản lý món, tài khoản và thống kê.
 
 Stack giữ nguyên: Expo SDK 54, React 19, React Native 0.81, TypeScript, Node.js/Express 5, MySQL/mysql2. Không thêm thư viện.
 
 ## Chạy trên máy hiện tại
+
+Ngày 21/10/2026, database đã đổi từ `smart_canteen` sang `app_canteen`; `backend/.env` đã cập nhật `DB_NAME=app_canteen`. Toàn bộ 7 bảng, dữ liệu và khóa ngoại được giữ nguyên. Năm database kiểm thử cũ đã được xóa theo yêu cầu. Bản sao SQL trước khi đổi tên nằm trong `.local-backups/`, được loại khỏi Git vì chứa dữ liệu riêng tư. Chạy `npm test` sau này sẽ tạo lại database kiểm thử riêng.
 
 Migration `007_canteen_operations.sql` đã được áp dụng vào database cấu hình trong `backend/.env` trong lần triển khai này. Đối chiếu trước/sau xác nhận toàn bộ cột cũ của 2 tài khoản, 7 món, 1 đơn, 1 chi tiết đơn và 3 phiên đăng nhập không thay đổi.
 
@@ -37,6 +39,12 @@ npm start
 
 Thay `IP_LAN_MAY_BACKEND` bằng IP thật; điện thoại và máy backend phải kết nối được với nhau. Không dùng `localhost` trên điện thoại để gọi máy tính. Cũng có thể đặt `EXPO_PUBLIC_API_URL` trong `.env` ở thư mục gốc và khởi động lại Expo.
 
+### Khi đăng nhập báo quá thời gian hoặc đã hủy
+
+Kiểm tra `EXPO_PUBLIC_API_URL` trong `.env` ở thư mục gốc. Khi đổi Wi-Fi, IP máy chạy backend có thể thay đổi: chạy `ipconfig`, lấy IPv4 của Wi-Fi đang dùng và cập nhật URL `http://IP_MOI:3000`. Không khai báo biến này nhiều lần. Nếu chỉ chạy web trên máy backend, có thể để trống để ứng dụng dùng hostname của trang.
+
+Sau khi sửa, khởi động lại Expo bằng `npx expo start --clear`, rồi tải lại ứng dụng/trang web. Nếu đã đặt `$env:EXPO_PUBLIC_API_URL` trong terminal, cần cập nhật hoặc xóa biến đó vì nó được ưu tiên hơn `.env`. Backend phải đang chạy ở cổng 3000; điện thoại phải kết nối được tới máy backend qua mạng LAN.
+
 ## Cài cho môi trường MySQL mới
 
 1. Tạo database rỗng bằng tài khoản có quyền phù hợp:
@@ -58,13 +66,14 @@ MySQL DDL tự commit. Nếu migration lỗi giữa chừng, dừng triển khai
 
 ## Chức năng
 
+Chức năng chỗ ngồi đã được gỡ khỏi giao diện user/staff/admin và API. Bảng `canteen_tables` cùng migration lịch sử được giữ lại để bảo toàn dữ liệu cũ; ứng dụng không còn sử dụng bảng này.
+
 ### Sinh viên
 
 - Đăng ký, đăng nhập, đăng xuất; sửa họ tên và số điện thoại.
 - Tìm/lọc món, xem chi tiết, quản lý giỏ.
 - Chọn khung giờ nhận trong 3 ngày, thêm ghi chú, đặt trước, nhận mã đơn.
 - Xem lịch sử và trạng thái đơn; tự hủy khi đơn còn chờ xác nhận.
-- Xem bàn và thời điểm cập nhật; tải lại mỗi 30 giây hoặc bấm Làm mới.
 
 ### Nhân viên
 
@@ -72,7 +81,6 @@ MySQL DDL tự commit. Nếu migration lỗi giữa chừng, dừng triển khai
 - Ghi nhận khách không đến nhận sau giờ hẹn ít nhất 30 phút.
 - Tìm món, chọn số lượng, xác nhận tiền mặt và hoàn thành đơn tại quầy; khách không cần tài khoản.
 - Xem lịch sử bán hàng tại quầy.
-- Thêm/sửa/ngừng sử dụng bàn, cập nhật trạng thái thủ công.
 
 ### Quản trị viên
 
@@ -133,7 +141,6 @@ Không xóa tài khoản, đơn hàng hay món cũ. Route DELETE tài khoản tr
 | Trạng thái | `PUT /api/orders/:id/status` cho đơn của sinh viên; `/api/staff/orders/:id/status` cho nhân viên/admin; route admin cũ được giữ |
 | Vận hành | `GET /api/staff/orders`; `GET /api/admin/dashboard` |
 | Tài khoản quản trị | `GET/POST /api/admin/users`, `GET/PUT /api/admin/users/:id`, `PUT /api/admin/users/:id/access` |
-| Bàn | `GET /api/tables`; `POST /api/tables`, `PUT /api/tables/:id` dành cho staff/admin |
 
 Bearer token giữ cơ chế hiện có. Mỗi request xác thực lại quyền và trạng thái hoạt động từ MySQL. Thay đổi quyền/vô hiệu hóa xóa các phiên cũ. Không dùng JWT.
 
@@ -154,14 +161,13 @@ npm test
 
 `npm test` dùng kết nối MySQL trong `.env` để **tạo database riêng tên `canteen_test_*`**, không chạy nghiệp vụ thử lên DB_NAME hiện tại. Cần quyền CREATE DATABASE. Database kiểm thử được giữ lại, tên được in ra; bộ test không tự DROP database.
 
-Đã chạy thành công các kiểm thử tích hợp HTTP/MySQL: phân quyền, giá do backend quyết định, giờ nhận, chống gửi trùng, cạnh tranh tồn kho online/counter, rollback khi giá tiền mặt thay đổi, hủy/hoàn kho đúng một lần, trạng thái hợp lệ, không đến nhận, bàn, ngừng bán món, tài khoản vô hiệu hóa, bảo toàn đơn cũ, migration mới và chạy migration lặp lại.
+Đã chạy thành công các kiểm thử tích hợp HTTP/MySQL: phân quyền, giá do backend quyết định, giờ nhận, chống gửi trùng, cạnh tranh tồn kho online/counter, rollback khi giá tiền mặt thay đổi, hủy/hoàn kho đúng một lần, trạng thái hợp lệ, không đến nhận, ngừng bán món, tài khoản vô hiệu hóa, bảo toàn đơn cũ, migration mới và chạy migration lặp lại.
 
 Đã kiểm tra TypeScript, cú pháp backend, cấu hình Expo và xuất bundle web. **Chưa kiểm thử thao tác giao diện trong trình duyệt hoặc trên Android/iOS:** công cụ trình duyệt không có phiên khả dụng. Không coi typecheck/export là bằng chứng mọi thao tác UI đã chạy thành công.
 
 ## Giới hạn và việc tiếp theo
 
 - Chưa có tải ảnh lên, thanh toán trực tuyến, hóa đơn in hoặc hoàn tiền.
-- Bàn cập nhật thủ công; trạng thái chỉ phản ánh lần nhân viên cập nhật, không giữ chỗ.
 - Giỏ và lựa chọn chưa lưu bền vững khi đóng ứng dụng; chống gửi trùng dựa trên request key của lượt thao tác hiện tại.
 - Chưa có phân trang dữ liệu lớn hoặc sổ nhật ký đầy đủ cho mọi thay đổi kho.
 - Chưa có lịch mở cửa riêng theo từng ngày/ngày nghỉ.
@@ -176,6 +182,6 @@ npm test
 - `backend/test/integration.test.js`, `backend/test/upgrade.test.js`.
 - `src/api.ts`: URL cấu hình tập trung, request helper, kiểu đơn và định dạng giờ.
 - `src/components/OperationsUI.tsx`, `OrdersPanel.tsx`, `AccountsPanel.tsx`.
-- `src/screens/StaffScreen.tsx`, `CounterScreen.tsx`, `TablesScreen.tsx`.
+- `src/screens/StaffScreen.tsx`, `CounterScreen.tsx`.
 - `App.tsx`, `src/types.ts`, các màn hình Admin/Cart/Profile/Login/Register/Home/Menu/FoodDetail.
 - `.env.example`, `backend/.env.example`, `backend/package.json`, tài liệu này.
